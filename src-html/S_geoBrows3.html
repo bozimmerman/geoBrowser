@@ -1,0 +1,378 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+;******************************
+;*  S/geoBrows3
+;*
+;*  All geoPaint support
+;******************************
+.noeqin
+.if Pass1
+.include	GEOSequates
+.endif
+.glbl
+.eqin
+
+.psect
+
+ShowPaint:	jsr	UnColor
+	ldb	ThisErr,#0
+	jsr	MakeMyVLIR
+	jsr	RedyWin2
+	jsr	SizeArea	; prepare cursor location
+	jsr	GPBoxPrep
+	jsr	GPColorPrep
+	jsr	GPColPrep
+
+GPPaintLp:	ldb	GPYCount,#8
+	ldb	GPCCount,#0
+	sta	GPCNum
+	sta	GPRNum
+
+10$:	ldw	A2,#PageBuf
+	jsr	GPReadRec
+	beq	20$
+	rts
+
+20$:	ldw	A2,#PageBuf
+	adw	ColSkipBt,A2
+	ldb	GPRCount,#2
+	jsr	GPBitLoop	; one record
+	beq	30$
+	rts
+
+30$:	ldw	A2,#PageBuf+1288
+	adw	GPColSkip,A2
+	jsr	GPColorLp
+
+40$:	ldb	GPRCount,#2	; a new record?
+	jsr	GPNextRec
+	beq	50$
+	rts
+
+50$:	jmp	GPPaintLp
+
+IsGeoPaint:	lda	PageNum
+	bne	10$
+	cmp	#$ff
+	rts
+10$:	cbi	TransTyp,#1
+	bne	15$	; is the type GEOS?
+	cbi	GeosTyp,#4
+	bne	15$	; is it geoPaint?
+15$:	rts
+
+GPNextRec:	jsr	IsNxVLIR
+	beq	45$
+43$:	ldb	ThisErr,#$ff	; inform prg that this is IT!
+	bne	98$
+45$:	jsr	NxVLIRPg	; find next track and sector
+	mvw	CurCard,R0
+	ldy	#0
+	lda	R1L	; save track into next currcard
+	sta	(R0),y
+	iny
+	lda	R1H	; save sec into next currcard
+	sta	(R0),y
+	iny
+	jsr	GEOFVLIs	; save new byte into nxt currcard
+	sta	(R0),y	; and now we're ready!
+	jsr	NxtSector
+	stx	ThisErr
+	txa
+	bne	98$	; an errorful exit reading sector
+	lda	GPYPos
+	add	#8
+	cmp	BoxSave+1
+	bgt	98$	; fresh row, can we show it?
+99$:	ldx	#0
+	rts	
+98$:	ldx	#$ff	; to mark the END
+	rts
+
+GPReadRec:	cwi	A2,#PageBuf+1440
+	ble	10$
+	ldx	#0
+	rts
+10$:	jsr	NxtByte
+	cpx	#0
+	beq	13$
+	rts
+13$:	cmp	#$40
+	blt	20$
+	cmp	#$80
+	blt	30$	; below is a "repeat that byte"
+	and	#$7f	; clear that $80 bit
+	sta	GPCode
+	jsr	NxtByte
+	sta	GPChr
+15$:	lda	GPChr
+	ldy	#0
+	sta	(A2),y
+	inw	A2
+	dec	GPCode
+	bne	15$		
+	jmp	GPReadRec
+20$:	sta	GPCode	; raw "bytes that follow" deal
+21$:	jsr	NxtByte
+	ldy	#0
+	sta	(A2),y
+	inw	A2
+	dec	GPCode
+	bne	21$		
+	jmp	GPReadRec
+30$:	and	#$3f	; eight byte "fill pattern" code
+	sta	GPCode
+	ldb	GPCount,#8
+31$:	jsr	NxtByte
+	ldy	GPCount
+	sta	GPChr,y
+	dec	GPCount
+	bne	31$
+32$:	ldb	GPCount,#8
+33$:	ldy	GPCount
+	lda	GPChr,y
+	ldy	#0
+	sta	(A2),y
+	inw	A2
+	dec	GPCount
+	bne	33$
+	dec	GPCode
+	bne	32$
+	jmp	GPReadRec
+
+GPBitLoop:	mvw	GPXPos,R3	; set new x,y
+	mvb	GPYPos,R11L
+	lda	R3L
+	clc
+	adc	#7
+	sta	R4L
+	lda	R3H
+	adc	#0
+	sta	R4H
+	cpw	R4,BoxSave+4
+	bgt	20$
+	lda	GPRNum	; if we've shown 1 row
+	beq	10$	; no need to copy new col
+	mvb	GPCCount,GPCNum	; so, copy new col
+10$:	cpb	R11L,BoxSave+1
+	bgt	20$
+	ldy	#0
+	lda	(A2),y
+	jsr	HorizontalLine
+20$:	inw	A2
+	;cwi	A2,#PageBuf+1280
+	;ble	25$
+	;ldx	#0
+	;rts
+25$:	inc	GPYPos
+	dec	GPYCount
+	beq	30$
+	jmp	GPBitLoop	; not a new card
+30$:	ldb	GPYCount,#8	; a new card
+	svb	#8,GPYPos
+	avw	#8,GPXPos
+	inc	GPCCount
+	cbi	GPCCount,#80	
+	bge	35$
+	jmp	GPBitLoop	; not a new row
+35$:	ldb	GPCCount,#0	; a new row
+	avb	#8,GPYPos
+	mvw	BoxSave+2,GPXPos
+	cpb	R11L,BoxSave+1
+	bgt	37$
+	inc	GPRNum
+37$:	dec	GPRCount
+	beq	40$
+	jmp	GPBitLoop	; not a new record
+40$:	rts
+
+GPBoxPrep:	lda	R3L
+	and	#%11111000	; smash the last eight bytes
+	cmp	R3L
+	beq	10$
+	sta	R3L
+	avw	#8,R3	; and bumpabyte
+10$:	lda	R2H
+	and	#%11111000
+	sta	R2H
+	sta	R2H
+	lda	R2L
+	and	#%11111000
+	cmp	R2L
+	beq	12$
+	sta	R2L
+	avb	#8,R2L
+12$:	mvw	R2,BoxSave
+	mvb	R2L,GPYPos
+	mvw	R3,BoxSave+2
+	mvw	R3,GPXPos
+	mvw	R4,BoxSave+4
+	rts
+
+GPColorPrep:	mvw	BoxSave+2,GPCBoxX
+	lsr	GPCBoxX+1	; divide by eight
+	ror	GPCBoxX
+	lsr	GPCBoxX+1
+	ror	GPCBoxX
+	lsr	GPCBoxX+1
+	ror	GPCBoxX	; now have col#0-80
+	mvb	BoxSave,GPCBoxY
+	ror	GPCBoxY	; divide THIS one by eight
+	ror	GPCBoxY
+	ror	GPCBoxY	; now have row#0-25
+	ldw	GPCPtrT,#$8c00	; get c64 pointer
+	ldy	GPCBoxY
+	beq	11$
+10$:	avw	#40,GPCPtrT	; increment 1 row
+	dey
+	bne	10$
+11$:	adw	GPCBoxX,GPCPtrT	; now we gots it!
+	mvw	GPCPtrT,GPCPtrR
+	rts
+
+GPColorLp:	cwi	rightMargin,#330
+	blt	10$
+	cbi	$c00f,#$40	; check for Wheels
+	blt	99$
+	cbi	$904f,#$50	; please
+	blt	99$
+	jmp	GPColor128
+99$:	rts
+10$:	jmp	GPColor64
+
+
+GPColor64:	ldb	GPCYDex,#2
+	sta	ColorDirty
+11$:	mvw	GPCPtrR,A3
+	ldb	GPCBDex,#80
+	mvb	GPCNum,GPCXDex
+	inc	GPCXDex
+15$:	lda	GPCXDex
+	beq	20$
+	dec	GPCXDex	
+	ldy	#0
+	lda	(A2),y
+	sta	(A3),y
+	inw	A3
+20$:	inw	A2
+	dec	GPCBDex
+	bne	15$	
+	avw	#40,GPCPtrR
+	dec	GPCYDex
+	bne	11$
+99$:	rts
+
+
+
+GPColor128:	ldb	GPCYDex,#2
+	sta	ColorDirty
+	mvb	GPCNum,A4L	; the last X block
+	mvb	GPRNum,A4H	; the last Y block
+	adb	GPCBoxX,A4L
+	adb	GPCBoxY,A4H	; now we gots em
+	mvb	GPCBoxY,A3H	; the current Y block
+11$:	mvb	GPCBoxX,A3L	; the current X block
+	ldb	GPCBDex,#80
+15$:	cpb	A3L,A4L
+	bge	20$
+	mvw	A3,R1
+	ldb	R2L,#1
+	sta	R2H
+	ldy	#0
+	lda	(A2),y
+	sta	R4H
+	jsr	$c313
+	inc	A3L
+20$:	inw	A2
+	dec	GPCBDex
+	bne	15$	
+	inc	A3H
+	inc	GPCBoxY
+	cpb	A3H,A4H
+	blt	11$
+99$:	rts
+
+UnColor:	lda	ColorDirty
+	bne	10$
+	rts
+10$:	cwi	rightMargin,#330	; do Wheels 128 color?
+	blt	20$
+	cbi	$c00f,#$40	; check for Wheels
+	blt	15$
+	cbi	$904f,#$50	; please
+	blt	15$
+	ldw	R1,#0
+	ldb	R2L,#80
+	ldb	R2H,#25
+	mvb	screencolors,R4H
+	jsr	$c313	; colorrectangle
+15$:	ldb	ColorDirty,#0
+	rts
+	; 128 fix
+20$:	mvb	screencolors,UnC2
+	jsr	i_FillRam
+	.word	1000
+	.word	$8c00
+UnC2:	.byte	0
+	ldb	ColorDirty,#0
+	rts
+
+GPColPrep:	ldb	GPColSkip+1,#0
+	sta	ColSkipBt+1
+	mvb	GPColSkip,ColSkipBt
+	asl	ColSkipBt
+	rol	ColSkipBt+1
+	asl	ColSkipBt
+	rol	ColSkipBt+1
+	asl	ColSkipBt
+	rol	ColSkipBt+1
+	rts
+
+LfArro:	mvb	GPColSkip,GPCode
+	cpb	GPColSkip,GPCNum
+	bgt	10$
+	ldb	GPColSkip,#0
+	bra	11$
+10$:	sbb	GPCNum,GPColSkip
+11$:	cpb	GPCode,GPColSkip
+	bne	12$
+	rts
+12$:	jmp	ShowPage
+
+RtArro:	mvb	GPColSkip,GPCode
+	adb	GPCNum,GPColSkip
+	cmp	#79
+	bgt	10$
+	adb	GPCNum,GPColSkip
+	cmp	#79
+	blt	11$
+10$:	ldb	GPColSkip,#79
+11$:	sbb	GPCNum,GPColSkip
+	cpb	GPCode,GPColSkip
+	bne	12$
+	rts
+12$:	jmp	ShowPage
+
+.ramsect
+ColorDirty:	.block	1	; whether we need to erase
+; for the geopaint viewer
+BoxSave:	.block	6	; saving window dimensions
+GPCode:	.block	1	; uncompress code
+GPChr:	.block	10	; uncompress table
+GPCount:	.block	1	; to count down from 8
+GPXPos:	.block	2	; R3
+GPYPos:	.block	1	; R11L
+GPYCount:	.block	1	; current Y row
+GPCCount:	.block	1	; current X card
+GPCNum:	.block	1	; total columns displayed/row
+GPRCount:	.block	1	; first or second row
+GPRNum:	.block	1	; total rows displayed
+GPCBoxX:	.block	2	; color column # first byte
+GPCBoxY:	.block	1	; color row #, first byte
+GPCPtrT:	.block	2	; pointer into color ram
+GPCPtrR:	.block	2	; moving pointer into color
+GPCXDex:	.block	1	; num cols colored so far
+GPCYDex:	.block	1	; num rows colored so far
+GPCBDex:	.block	1	; number bytes = 80
+GPColSkip:	.block	2	; number bytes to skip=0
+ColSkipBt:	.block	2	; number bytes to skip
+</pre></body></html>

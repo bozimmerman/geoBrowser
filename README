@@ -1,0 +1,14 @@
+geoBrowser (C)2000-2019 Bo Zimmerman
+Please read the LICENSE file for license information
+Please read the NOTICE file for credits information
+Home Page: http://www.zimmers.net/geos/
+
+geoBrowser is a GEOS application which allows you to view many different kinds of text and picture documents without loading their respective applications and without having to translate them into another file type. geoBrowser's resizable, movable window system supports the browsing and viewing of standard Commodore text files in SEQ format (or PRG format), standard ASCII text files in SEQ or PRG format, geoWrite v2.0 and v2.1 documents with support for fonts and clip-art, geoPaint files in full color, LoadStar packed text files, GEOS Text Albums, GEOS Photo Albums, Applications, Desk Accessories, CMD Native partition subdirectories, and GEOS Notepad "Notes" files.
+
+Instructions for using geoBrowser can be read online at https://github.com/bozimmerman/geoBrowser/tree/master/geobrowsedoc.asc.seq . The instructions are also in geoWrite format in the src-geowrite and html format in the src-html directory.
+
+Building:
+geoBrowser was built using Concept for Wheels 64.  It might also build using geoProgrammer, but hasn't been tested.  In addition to the provided source, you'll require several components and libraries from the geoModules project:
+https://github.com/bozimmerman/geoModules
+
+

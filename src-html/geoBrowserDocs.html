@@ -1,0 +1,60 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+geoBrowser v1.6 
+(c) 2000 by Bo Zimmerman
+
+This program is shareware.  If you find the program useful, please register it.  It will encourage me to continue developing this software.  Registration instructions can be seen by executing the program.
+
+Please send any and all reports of praise or problems to bo@zimmers.net, or to the address shown on the registration screen.  Only registered users will receive bug fixes and new feature enhancements.
+
+Introduction:
+
+    geoBrowser is a GEOS v2.0 application which allows you to view many different kinds of text and picture documents without loading their respective applications and without having to translate them into another file type.
+
+    geoBrowser's resizable, movable window system supports the browsing and viewing of standard Commodore text files in SEQ format (or PRG format), standard ASCII text files in SEQ or PRG format, geoWrite v2.0 and v2.1 documents with support for fonts and clip-art, geoPaint files in full color, LoadStar packed text files, GEOS Text Albums, GEOS Photo Albums, Applications, Desk Accessories, CMD Native partition subdirectories, and GEOS Notepad "Notes" files.
+
+Using the geoBrowser interface:
+
+    geoBrowser is executed by double-clicking on its icon from the deskTop.  When the main screen comes up, you will see two drop-down menus at the top of the screen, and two windows, one of which is empty.
+
+    The two main menu options include the geos menu, which contains a "program info" option for viewing application version information, and options for any desk accessories you might have on the disk from which you launched geoBrowser.  The other menu option is the file menu, which contains an "open" option, for viewing a file selected from the file window (see below), and an "exit" option, which exits from geoBrowser and re-loads the deskTop.
+
+    Directly below the menu is the File window and to the right of the file window is the larger Browse window.  First we will experiment on using the windows as described below and then we will move on to the differences between the two.
+
+    Each window is divided into several parts.  The top part of each window, a horizontal bar containing many horizontal lines, is the Title bar.  On the right side of each title bar is a square box which is the Close button. Stretching vertically along the right side of each window is the Page bar with two page arrow buttons.  Stretching horizontally along the bottom is the Command bar which may contain some buttons.  The small box in the bottom right of the window, where the Page bar and the Command bar intersect, is the Resizing widget. The rest of the window is the viewing area.
+
+    In order to use a particular window, the user must first activate that window.  When geoBrowser first loads, the File window is the active window. A window is activated by clicking anywhere inside the window.  Once activated, any of the functions and buttons in that window may be used.  Activating a window will automatically de-activate the other window.  Since the two windows may overlap each other at times, the active window will always be the one on top and in the foreground.
+
+    An activated window may be moved around on the screen using your mouse or other GEOS pointing device.  A window is moved by holding down the mouse button inside of the active window's title bar and moving the mouse.  The user will notice the window partially redraws itself as the mouse is moved.  When the window is at the desired place on the screen, simply release the mouse button.  The window will then completely redraw and stay put.  Be careful not to try and move a window on top of the menu at the top of the screen.
+
+    An activated window may be made bigger or smaller using the resizing widget, which is the square on the bottom right corner of each window.  To resize a window, hold down the mouse button inside of the resizing widget and begin moving the mouse.  You will notice the window partially redrawing itself to the new size you are setting for it.  When the window is the size and shape you desire, release the mouse button and the window will complete its redrawing.
+
+Using the File window:
+
+    The left-most window when geoBrowser first loads is the File window.  This window contains a complete list of all the files found on the active disk drive.  When more files are on the disk than will fit in the window, you may use the bottom Page arrow button to go to the next page of file names.  The top "up" Page arrow button will go back to a previous page of file names.  If the first filename in the window is a ".." file, this means that you are in a CMD Native partition and may double click this file to return to a previous subdirectory.
+
+    The file window also contains either one or two buttons inside its bottom Command bar.  One button is the "Drive" button.  If you have more than one drive hooked up, this button will open up a disk in the next drive from A to B to C to D and back to A.  If you have opened a drive other than the one you booted geoBrowser off of, you will also see a "Disk" button.  This button will prompt you to insert a new disk into the current drive and then allow you to browse the files on that disk.
+
+    The files listed may be opened for browsing in one of two ways.  The first way is to select a file by clicking once on its name.  This will highlight the filename.  From here, you can select the File menu and click on the "open" option.  This will open the file for browsing.  The second way to open a file is to quickly double-click on the name of the file.
+
+    The file window's Close button will simply de-activate the file window and activate the browse window.
+
+Using the Browse window:
+
+    The larger window is the browse window, and it is where the text and graphics of the opened file may be viewed.
+
+    When a file is opened from the File window, its name will appear in the title bar of the browse window.  When this title bar does not contain a file name, then no file is opened.  The type of file will be auto-detected by geoBrowser, so you need not tell geoBrowser whether the file is ASCII or PETSKII or LoadStar packed, etc.  
+
+    The text in the browse window may be scrolled through by using the Page arrow keys.  Also, the text in a document will be automatically word wrapped for you.  If the text contains carriage returns of its own, it may look strange.  Resizing the browse window may help you out on this.
+
+    geoWrite documents contain Fonts, different text styles, tabs, and clip-art.  geoBrowser supports all of these, but may handle them differently than you expect.  Fonts are supported so long as the font is not too large to fit in geoBrowser's font buffer.  Also, when a change in a text style (outline, bold, italics, etc) results in a font being taller than it was before, or if a font change mid-sentence results in a larger font being displayed, the newly styled word will be moved down slightly in the window to accomodate the line above it.  Tabs will work exactly as they do in geoWrite, except that tabs which are beyond the scope of the browse window (roughly beyond the 6th inch), may be wrapped to the next line.  Clip-Art is also supported, and geoBrowser will do its best to fit as much of the picture in its window as possible.  However, sometimes geoBrowser will reserve a whole page for a picture when it can't quite fit enough of it on the current page.  In these cases, just hit the down page arrow to see the whole picture.
+
+    LoadStar packed files are prefixed with a "p." in the file name and are typically in PRG format.  This format changes from time to time without notice, so you should look for updates to geoBrowser whenever one of these files is unreadable.  You may also want to keep older geoBrowser's to read packed files in older formats.
+
+    Text Albums and Photo Albums are supported, but the names of each of the scraps will not be shown from geoBrowser.  Each "page" in the browse window will represent a record in the album.  Photo scraps fall under the same restrictions as they do in geoWrite files; geoBrowser will try to show as much of the picture as will fit, though you may have to resize the browse window to see more of a larger picture.
+
+    geoPaint files can be displayed in full color while GEOS is in 40 column mode.  They are displayed in black and white while GEOS is in 80 column mode, unless Wheels 128 is being used.  For Wheels 128 users in 80 column mode, geoPaint files will also appear in full color.  While viewing a geoPaint file, a second pair of arrows will appear on the bottom of the browse window.  These arrows allow the image to be moved horizontally within the browse window.  The up and down arrows can be used to move the picture vertically.
+
+    geoBrowser will also open desk accessories and applications.  If you run an application, however, you will not be able to return to geoBrowser.  geoBrowser is not a deskTop replacement, and provides application-launching only for convenience.
+
+    The browse window's Close button will close any file you have opened and re-activate the file window.
+</pre></body></html>

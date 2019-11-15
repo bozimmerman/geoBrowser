@@ -1,0 +1,204 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+;******************************
+;*  S/geoBrowHTM
+;*
+;*  This file contains the base
+;*  code for "HTML" reading.
+;*  Lexical analysys is handed
+;*  by the geoBrowser system
+;*  already (for word wrap).
+;*  However, none of this works
+;*  right now, and I'm outa memory.
+;******************************
+.noeqin
+.if Pass1
+.include	GEOSequates
+.endif
+.glbl
+.eqin
+
+.psect
+
+
+HTMSvTSB:	ldy	#0
+10$:	lda	TckSave+4,y	; restore last word t&s&b
+	sta	TckSave+8,y
+	iny
+	cpy	#3		; save track and sector
+	blt	10$
+	ldx	#0	
+20$:	lda	A2L,x
+	sta	TckSave+8,y
+	iny			; then the A2,A3 pair
+	inx
+	cpx	#4
+	blt	20$
+	rts
+
+HTMLdTSB:	lda	HTMstate		; set back-up mode
+	and	#%1000000	; set virtual state 0
+	ora	#%0000010	; then turn on back-up bits
+	sta	HTMstate
+	lda	ShowPg
+	beq	10$
+	lda	ThisChr		; save last character
+	ldy	#0
+	sta	(A3),y
+10$:	ldy	#3
+	ldx	#0
+11$:	lda	TckSave+8,y
+	sta	A2L,x
+	iny			; then restore the A2,A3 pair
+	inx
+	cpx	#4
+	blt	11$
+	ldb	PrevChr,#0 	; clear the previous character
+	lda	ShowPg
+	beq	20$
+	ldy	#0
+	lda	(A3),y		; restore show page and exit
+	sta	ThisChr
+	rts
+20$:	mvw	CurCard,R1
+	ldy	#0
+21$:	lda	TckSave+8,y	; restore last word t&s&b
+	sta	TckSave+4,y	; restore them all
+	sta	TckSave,y
+	sta	(R1),y		; restore file pointer
+	iny
+	cpy	#3		; restore track and sector
+	blt	21$
+	jsr	SetCurSc
+	cpw	R1,LastSec
+	beq	22$
+	jsr	GetBlock		; re-get the right block
+22$:	rts			; exit happy, dammit
+
+HTMchk:	rts			; ** abort html! remove!!
+	cbi	ThisChr,#'<'	; don't bother if no "<"
+	bne	10$
+	lda	HTMstate		; if already in state, no save
+	lsr	a
+	bcs	10$
+	jsr	HTMSvTSB	; ok, save place
+10$:	rts
+
+HTMLeval:	ldx	#$00	; *** abort the html eval
+	rts		; *** remove these two lines
+	lda	HTMstate	; if in HTM mode, proceed
+	lsr	a
+	bcs	12$
+	ldy	#0	; not in mode, should be?
+	lda	(A2),y
+	cmp	#'<'
+	bne	11$	; no, so display at will
+	lda	HTMstate
+	ora	#%00000001	; "<" found, so htm mode!
+	sta	HTMstate
+	ldb	HTMmode,#0	; clear html mode
+10$:	ldx	#$ff	; no display exit
+	rts	
+11$:	ldx	#$00	; allow display for now
+	rts
+12$:	lsr	a
+	bcc	13$	; check back-up mode
+	clc
+	rol	a	; backing up, so finish it
+	rol	a
+	sta	HTMstate	; clear the HTMstate
+	ldx	#$00	; allow backup print, exit
+	rts
+13$:	sta	HTMstate+1	; save "real" state
+	ldw	R0,#HTMTable
+HTMLp:
+14$:	ldy	#0
+	lda	(R0),y	; grab the state
+	tax
+	beq	51$
+50$:	dex
+	cpx	HTMstate+1	; dec to get "real" state
+	beq	51$		; not it, so possibly cont
+	avw	#6,R0
+	cpw	R0,HTM1		; any more commands
+	blt	14$
+	lda	#1		; no more commands, so back up(cmd#1)
+	bne	52$
+51$:	iny
+	lda	(R0),y		; get the command
+52$:
+HTMCMD:	asl	a		; multiply by two
+	tax
+	lda	HTMcmds,x	; get the routine LB
+	pha
+	inx
+	lda	HTMcmds,x	; and the routine HB
+	tax
+	pla
+	jmp	CallRoutine	; now go to it
+
+HTMcmds:	.word	HTMabort	; command 0
+	.word	HTMback		; command 1
+	.word	HTMisWd		; command 2
+	.word	HTMnewSt		; command 3
+	.word	HTMback
+	.word	HTMback
+
+HTMabort:	ldx	#$ff		; abort, no display
+	rts
+
+HTMback:	jsr	HTMLdTSB
+	ldx	#$ff
+	rts
+
+HTMGtPar:	ldy	#2
+	lda	(R0),y
+	sta	A1L
+	iny
+	lda	(R0),y
+	sta	A1H
+	rts
+
+HTMisWd:	jsr	HTMGtPar
+	mvw	A2,R1		; compare to given string
+	ldx	#R1
+	ldy	#A1
+	jsr	CmpString
+	beq	20$
+	jmp	HTMback		; bad compare so exit
+20$:	ldy	#4
+	lda	(R0),y
+	jmp	HTMCMD
+
+HTMnewSt:	ldy	#5
+	lda	(R0),y
+	asl	a
+	asl	a		; put new state in proper form
+	sec
+	sbc	#$01		; and subtract one
+	ora	#%00000001	; make sure in found mode
+	sta	HTMstate
+	ldx	#$ff
+	rts	
+
+HTMTable:	; state (0=all states, otherwise state # + 1)
+	; command (see HTMcmds on previous page)
+	; string pointer or function pointer or 0
+	; success command 
+	; success parameter
+	.byte	1,2,[HTM7,]HTM7,3,2	; 1,"html"->2
+	.byte	2,2,[HTM2,]HTM2,3,32	; 2,">"->32
+
+HTM1:	.byte	"<",0
+HTM2:	.byte	">",0
+HTM3:	.byte	" ",0
+HTM4:	.byte	13,0
+HTM5:	.byte	"/",0
+HTM7:	.byte	"html",0
+
+.ramsect
+
+HTMstate:	.block	2	; state of HTML parse
+HTMmode:	.block	1	; general HTML mode
+HTMflags:	.block	1	; will define later
+
+</pre></body></html>

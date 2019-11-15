@@ -1,0 +1,101 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+.noeqin
+.include	GEOSequates
+.glbl
+.eqin
+
+;****************************************
+;* MODdaAB
+;*
+;* Intro:
+;*	Handles the about box, and running das
+
+DAABrun2:	jsr	UnColor
+	lda	DAABdrv
+	jsr	SetDevice
+
+	plw	R6
+	ldx	$0001
+	ldb	$0001,#$35
+	phb	$d017
+	ldb	$d017,#0
+	stx	$0001
+
+	ldb	R0L,#0
+	lda	#%00000000
+	sta	R10L
+	jsr	GetFile
+	
+	ldx	$0001
+	ldb	$0001,#$35
+	plb	$d017
+	stx	$0001
+
+	mvb	screencolors,R2L
+	ldw	R1,#COLOR_MATRIX
+	ldw	R0,#(25*40)
+	jsr	FillRam
+	ldb	R2L,#15
+	ldb	R2H,#199
+	ldw	R3,#0
+	ldw	R4,#319
+	jsr	RecoverRectangle
+DAABrun3:	jmp	DARefrsh
+
+DAABnada:	rts
+
+AbtBox:	jsr	ClrScrn
+AbtBox2:	jsr	UnColor
+	cwi	rightMargin,#320
+	ble	10$
+	ldb	AbtDat+4,#$80
+	ldb	AbtDat+6,#$81
+10$:	lda	#[(AbtDat)
+	sta	$02	; set lsb for dialog data
+	lda	#](AbtDat)
+	sta	$03	; set msb for dialog data
+	jmp	$c256	; call DoAbtBox and leave!
+AbtDat:	.byte	$01	; size flag, and shadow pattern
+	.byte	$20,$b5,$40,$00,$1e,$01	; dialog box dimensions
+	.byte	$0b,$06,$0b	; static text
+	.word AbtT00
+	.byte	$0b,$06,$17	; static text
+	.word AbtT01
+	.byte	$0b,$06,$21	; static text
+	.word AbtT02
+	.byte	$0b,$07,$2a	; static text
+	.word AbtT03
+	.byte	$0b,$07,$35	; static text
+	.word AbtT04
+	.byte	$0b,$07,$47	; static text
+	.word AbtT05
+	.byte	$0b,$07,$52	; static text
+	.word AbtT06
+	.byte	$0b,$07,$5d	; static text
+	.word AbtT07
+	.byte	$0b,$08,$6d	; static text
+	.word AbtT08
+	.byte	$0b,$08,$77	; static text
+	.word AbtT09
+	.byte	$0b,$08,$81	; static text
+	.word AbtT0a
+	.byte	$01,$12,$7e	; OK button
+	.byte	$00	; end of table
+AbtT00:	.byte	$1a,$18,"   geoBrowser v1.6",27,0
+AbtT01:	.byte	"This program is SHAREWARE.  Distribute it",27,0
+AbtT02:	.byte	"as you like.  If you enjoy it, send your",27,0
+AbtT03:	.byte	"registration fee of $15 USD to the",27,0
+AbtT04:	.byte	"following address:",27,0
+AbtT05:	.byte	"Bo Zimmerman",27,0
+AbtT06:	.byte	"1907 Cameo Drive",27,0
+AbtT07:	.byte	"Round Rock, TX  78664",27,0
+AbtT08:	.byte	"Email: bo@zimmers.net",27,0
+AbtT09:	.byte	"  ",27,0
+AbtT0a:	.byte	"  ",27,0
+
+.ramsect
+
+DAABdrv:	.block	1
+DAABaces:	.block	148
+TheEnd:	.block 1
+</pre></body></html>

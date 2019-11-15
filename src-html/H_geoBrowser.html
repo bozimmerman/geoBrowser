@@ -1,0 +1,39 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+;********************
+;*    Main Header File
+;********************
+
+.if 	Pass1
+.include	GEOSequates
+.endif
+
+
+
+	.header		;start of header section
+
+	.word	0	;first two bytes = 0
+	.byte	3		;width in bytes
+	.byte	21	;and height in scanlines of:
+<img src="00064.png" />	.byte	$80 | 3	;Commodore type, bit 7 S
+	.byte	APPLICATION	;Geos file type
+	.byte	SEQUENTIAL	;Geos file structure type
+	.word	ProgStart	;load address of program 
+	.word	$3ff	;end address, needed for
+				;desk accessories.
+	.word	ProgStart	;init address of program
+	.byte	"geoBrowser  1.6b",0,0,0,64
+			;perm. filename 12 chars,
+			;4 char version number,
+			;3 zeroes,
+			;40/80 column flag.
+	.byte	"Bo Zimmerman       ",0
+			;19 character author name
+
+	;end of header section which is checked for accuracy
+	.block	160-117	;skip 43 bytes...
+	.byte	"Browse SEQ files, ASCII, LoadStar, geoWrite, "
+	.byte	"geoPaint, Notes, Text and Photo Albums."
+	.endh
+
+
+</pre></body></html>

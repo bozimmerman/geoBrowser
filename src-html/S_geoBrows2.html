@@ -1,0 +1,1397 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+;******************************
+;*  S/geoBrows2
+;*
+;*  This file contains all of the code for
+;*  managing the viewing window.  It
+;*  also contains all of the file opening,
+;*  translating, closing, displaying code.
+;*  Fonts, tabs, escape codes, and 
+;*  everything else necessary to viewing
+;*  an open file is found herein.
+;******************************
+.noeqin
+.if Pass1
+.include	GEOSequates
+.endif
+.glbl
+.eqin
+
+.psect
+
+DrawRdBx:	jsr	UnColor	; redraw the viewing window
+	lda	PageNum
+	beq	10$
+	lda	dispBufferOn
+	jsr	RdBxMeat
+10$:	jsr	ShowPage	; redisplay text if any
+	rts
+
+RdBxMeat:	pha
+	mvb	dispBufferOn,dispBuf
+	pla
+	sta	dispBufferOn
+	ldw	Arro2+1,#RedyWin2
+	jsr	RedyWin2
+	jsr	DrawArro	; draw the up/down arrows
+	jsr	IsGeoPaint
+	bne	15$
+	jsr	RedyWin2
+	jsr	DrawArRL	; draw the up/down arrows
+	jsr	RedyWin2
+	jsr	DrawArRR	; draw the up/down arrows
+15$:	mvb	dispBuf,dispBufferOn
+	rts
+
+ClosWin2:	jsr	UnColor
+	ldb	RDTBtxt,#0	; reset the "open" variables
+	ldb	PageNum,#0
+	jsr	DrawWin2
+	jsr	RedyWin2	; imprint, and hope this is good
+	jsr	ImprintRectangle
+	jsr	i_WinAct
+	.byte	1
+	rts
+
+FileInit:	ldb	RDTBtxt,#0
+	ldb	PageNum,#0	; decides whether page open
+	sta	GPColSkip
+	ldb	TransTyp,#0	; dunno what kind of file
+	mvb	FileClkd,A4L
+	cmp	#1
+	bne	10$
+	lda	DotFlag
+	beq	14$
+	jsr	ElimDAs
+	lda	#(5|64)
+	jsr	$9d80	; get new kernal
+	jsr	$5012
+	jsr	$9d83	; restore kernal
+	jsr	NewDrv
+	jmp	DrawWin1
+10$:	ldw	A2,#FileBuf	; get ready to find filename
+	ldw	A3,#A9
+	dec	A4L
+	jsr	DownList	; get item pointer
+	txa
+	beq	15$
+11$:	rts
+14$:	ldw	A9,#FileBuf
+15$:	jmp	FileOpen
+
+FileOpen:	mvw	A9,R6	; now look for file on disk
+	ldb	$886e,#$ff
+	jsr	FindFile	; open the file
+	txa
+	beq	11$
+	jmp	FError
+11$:	jsr	MvNm2Bar
+	jsr	CardInit
+	ldy	#$16
+	lda	$8400,y	; check for geos file type	
+	beq	12$
+	jmp	GEOFinit	; a GEOS file type!!
+12$:	ldy	#0	; check non-geos file type
+	lda	$8400,y
+	and	#%10111111	; mask wr-protect bit
+	cmp	#$81	; $80 or lower is bad
+	bge	14$
+13$:	jsr	i_CNCLBox	; bad non-geos file type exit
+	.word	BadTpTxt
+	jmp	ClosWin2
+14$:	cmp	#$83
+	blt	15$	; another bad type=usr/rel/etc
+	jsr	NativeDir
+	bne	13$	; but it must be native...	
+	rts
+15$:	iny		; copy track and sector over
+	lda	$8400,y
+	sta	PgCards-1,y
+	iny
+	lda	$8400,y
+	sta	PgCards-1,y	; copy sector
+	ldw	A0,#PgCards	; first page is current page
+	mvw	CurCard,A1
+	jsr	CopyCard	; now ready to read page
+	jsr	i_WinAct	; activate our new screen
+	.byte	2	
+	ldb	PageNum,#1	; makes it official!
+	lda	#ST_WR_FORE
+	jsr	RdBxMeat
+	jsr	NewPage	; open the first page? now?
+	txa
+	bne	17$
+	;jsr	i_WinAct	; activate our new screen
+	;.byte	2	
+17$	rts
+BadTpTxt:	.byte	$18,"File is not readable.",27,0
+
+NativeDir:	cmp	#$86
+	beq	10$	; directories MIGHT be ok
+	rts
+10$:	jsr	IsNative
+	beq	11$
+	rts
+11$:	lda	PageNum	; if file open, CLOSE IT
+	beq	12$
+	jsr	ClosWin2
+12$:	jsr	ElimDAs
+13$:	lda	#(5|64)
+	jsr	$9d80	; get new kernal
+	jsr	$5015
+	jsr	$9d83	; restore kernal
+21$:	jsr	NewDrv
+	jsr	DrawWin1
+	ldx	#0	; report no error, please
+	rts
+
+CardInit:	ldw	PgCard,#PgCards
+	ldw	CurCard,#PgCards+26
+	ldw	A0,#DefCard
+	ldw	A1,#PgCards
+CopyCard:	ldy	#0
+10$:	lda	(A0),y	; copy page card info
+	sta	(A1),y
+	iny
+	cpy	#26
+	blt	10$	
+	rts
+
+MvNm2Bar:
+	ldw	A3,#RDTBtxt
+	ldx	#A9
+	ldy	#A3	
+	jmp	CopyString	; copy new titlebar fm filename
+
+GEOFinit:	ldy	#$15	; check VLIR type
+	lda	$8400,y	; VLIR data type?
+	bne	10$
+	jmp	GEOFcSEQ	; check SEQ geos type
+10$:	ldb	TransTyp,#1	; signify geos translation
+	ldw	R9,#$8400
+	jsr	GetFHdrInfo	; read the header info
+	cpx	#0
+	beq	15$
+	jmp	FError
+15$:	jsr	GEOFcVLv	; check for viewable geos type
+	beq	16$
+	jmp	GEOFVLIe
+16$:	mvw	R1,LastSec
+	ldw	R4,#VBuf	; read the vlir sector
+	jsr	GetBlock
+	cpx	#0
+	beq	20$
+	jmp	FError
+20$:	jsr	GEOFcVLb	; inspect the VLIR block
+	ldb	VBuf,#0
+	jsr	NxVLIRPg
+	beq	25$
+	jsr	i_CNCLBox
+	.word	GEOFtxt2
+	jmp	ClosWin2
+25$:	mvw	R1,PgCards	; copy track and sector over
+	ldw	A0,#PgCards	; first page is current page
+	mvw	CurCard,A1
+	jsr	CopyCard	; now ready to read page
+	jsr	GEOFVLIs	; get right start byte
+	sta	PgCards+2
+	jsr	i_WinAct	; activate our new screen
+	.byte	2	
+	ldb	PageNum,#1	; makes it official!
+	lda	#ST_WR_FORE
+	jsr	RdBxMeat
+	jsr	NewPage	; open the first page? now?
+	txa
+	bne	30$	; error conditions can go here
+	;jsr	i_WinAct	; activate our new screen
+	;.byte	2	
+30$:	rts
+GEOFtxt2:	.byte	$18,"No pages found?!",27,0
+
+
+GEOFcVLv:	ldb	Temp3,#0	; continue geos file eval
+	ldw	A0,#GEOFtyps
+	ldw	A1,#$814d
+10$:	cwi	A0,#GEOFlast
+	bge	99$	; this is bad
+	ldy	#0
+11$:	lda	(A0),y	; if null, then done
+	beq	30$
+	cmp	(A1),y	; compare to actual file type
+	bne	20$
+	iny
+	bne	11$
+20$:	ldy	#0	; no match, so go to next word
+	inc	Temp3
+21$:	inw	A0	; find the end of search pattern
+	lda	(A0),y
+	bne	21$
+	inw	A0	; and increment past the null
+	bra	10$	; and jump up to next word
+30$:	mvb	Temp3,GeosTyp
+	ldx	#0
+	rts
+99$:	ldx	#$ff
+	rts
+GEOFtyps:	.byte	"Write Image",0
+	.byte	"text album",0
+	.byte	"photo album",0
+	.byte	"Notes",0
+	.byte	"Paint Image",0
+GEOFlast:	.byte	"last",0
+
+
+
+GEOFcVLb:	lda	GeosTyp	; all albums lose their last sector
+	beq	99$
+	cmp	#3
+	bge	99$	; albums are codes 1-2
+	lda	#0
+	sta	VBuf
+10$:	jsr	IsNxVLIR	; find the last link
+	bne	20$
+	jsr	NxVLIRPg
+	bra	10$
+20$:	ldy	VBuf	; now lose the last link
+	lda	#0
+	sta	VBuf,y	; clear out last VLIR link -- names
+	iny
+	sta	VBuf,y	
+99$:	lda	#0	; reset VBuf pointer
+	sta	VBuf
+	rts
+
+GEOFVLIs:	lda	TransTyp	; is it a GEOS type?
+	cmp	#1
+	bne	99$
+	lda	GeosTyp	; text albums lose their 2 bytes
+	beq	99$	; but geoWrite docs do not
+	cmp	#1
+	beq	98$	; text album is code 1
+	cmp	#3	; notes are code 3 
+	bge	99$
+98$:	lda	#3
+	rts
+99$:	lda	#1
+	rts
+
+GEOFcSEQ:
+GEOFVLIe:
+GEOFexec:	ldy	#$16	; check GEOS type
+	lda	$8400,y	; what kind is it?
+	cmp	#$06
+	beq	20$	; application
+	cmp	#$14
+	beq	20$	; AutoExec
+	cmp	#$05
+	beq	30$	; desk acc
+	jsr	i_CNCLBox	; temporary
+	.word	GEOFtxt
+	jmp	ClosWin2
+20$:	jsr	i_YNBox
+	.word	GEOFtxt1
+	cbi	sysDBData,#4
+	bne	21$
+	rts
+21$:	ldb	R0L,#0	; set "run" flag
+	ldw	R7,#0	; figure out load address yourself
+	mvw	A9,R6	; get the filename
+	jmp	GetFile	; bye bye, now.
+30$:	phw	A9
+	jsr	ClosWin2
+	jmp	DAABrun2
+GEOFtxt:	.byte	$18,"Unsupported GEOS type.",27,0
+GEOFtxt1:	.byte	$18,"Switch to this application?",27,0
+
+
+
+IsNxVLIR:	cbi	VBuf,#122	; any more to find?
+	bge	99$	; no, so exit
+	ldy	VBuf
+	iny		; load index and move forward
+10$:	iny
+	cpy	#124	; down to last record?
+	bge	99$
+	lda	VBuf,y	; is track null?
+	beq	11$
+	sta	R1L	; no, so check next one
+	iny
+	lda	VBuf,y
+	sta	R1H	; its good, so get sector & exit
+	dey
+	ldx	#0
+	rts
+11$:	iny		; worth checking next one...?
+	lda	VBuf,y
+	bne	10$
+99$:	ldx	#$ff	; nope, so exit!
+	rts	
+
+IsPvVLIR:	cbi	VBuf,#3	; any possible previous pages?
+	blt	99$
+	ldy	VBuf
+	iny
+10$:	dey
+	dey
+	dey
+	cpy	#2	; anything previous?
+	blt	99$
+	lda	VBuf,y	; is there a track?
+	beq	11$	; no.. so skip
+	sta	R1L
+	iny
+	lda	(R0),y	; get sector and exit
+	sta	R1H
+	dey
+	ldx	#0
+	rts
+11$:	iny		; are we done?
+	lda	(R0),y
+	bne	10$	; no, so keep looking...
+99$:	ldx	#$ff
+	rts	
+
+NxVLIRPg:	jsr	IsNxVLIR
+	bne	20$
+	sty	VBuf	; save new index
+	jsr	ClrTBUF
+	ldx	#0
+20$:	rts
+
+PvVLIRPg:	jsr	IsPvVLIR
+	bne	10$
+	sty	VBuf	; save new index
+	jsr	ClrTBUF
+	ldx	#0
+10$:	rts
+
+ClrTBUF:	ldy	#0
+	tya
+10$:	sta	TBuf,y
+	dey
+	bne	10$
+	ldy	VBuf
+	rts
+
+NxtSector:	jsr	SetCurSc	; read the next sector
+	mvw	R1,LastSec
+	jsr	GetBlock
+	txa
+	rts		; return real live disk error
+
+SetCurSc:	ldw	R4,#TBuf
+	mvw	CurCard,A6	; set up a pointer to current
+	ldy	#0	; sector for this page
+	lda	(A6),y
+	sta	R1L
+	iny
+	lda	(A6),y
+	sta	R1H
+	rts	
+		
+NxtByte:	mvw	CurCard,A6
+	ldy	#2	; fetch byte pointer
+	lda	(A6),y
+	clc
+	adc	#1		; increment byte pointer
+	sta	(A6),y
+	bcc	90$	; overflow to next sector coming
+	lda	TBuf
+	bne	12$	; handle $00,$FF pages
+	beq	10$
+90$:	tay
+	lda	TBuf	; is this last sector?
+	bne	11$	; no, so get byte
+	cpy	TBuf+1	; check for eof
+	ble	11$
+10$:	ldx	#11
+	rts		; end of file exit!
+11$:	ldx	#0
+	lda	TBuf,y	; get the byte and exit
+	rts		
+12$:	ldy	#0
+	lda	TBuf	; set up next track & sector
+	sta	(A6),y
+	iny
+	lda	TBuf+1
+	sta	(A6),y
+	jsr	NxtSector
+	txa
+	bne	13$
+	ldy	#2
+	lda	#1
+	sta	(A6),y
+	jmp	NxtByte
+13$:	rts		; return a disk error!
+
+FilePvew:	jsr	NxtSector	; preview a file for type analysis
+	txa
+	bne	90$
+	jsr	NxtByte	; get first 2 bytes out of way
+	sta	Temp2
+	jsr	NxtByte
+	sta	Temp2+1
+	jsr	NxtByte
+	sta	ThisChr
+	cpx	#0
+	beq	10$	; this means 1 char txt files bad!
+90$:	ldb	PageNum,#0
+	jsr	FError
+	jsr	ClosWin2	; +0 total chars
+	ldx	#$ff
+91$:	rts
+10$:	jsr	LSPKTest
+	beq	91$	; check for LS packed file
+	lda	#0	; +1 total control/all garbage
+	ldy	#7	; +2 total numeric/symbol
+11$:	sta	Temp1-1,y	; +3 total C= lower/ASCII upper
+	ylp	11$	; +4 total ASCII lower/ C= gfx
+12$:	lda	ThisChr			; +5 total C= only controls	
+	inc	Temp1			; +6 total C= uppercase
+	ldx	#2
+	cmp	#13
+	beq	14$
+	cmp	#9
+	beq	14$
+	cmp	#10
+	beq	14$	; build counters
+	ldx	#1
+13$:	cmp	PvewCht-1,x
+	bge	15$
+14$:	inc	Temp1,x
+	bne	19$
+	inc	Temp1,x
+	bra	19$
+15$:	inx
+	cpx	#7
+	blt	13$
+	inc	Temp1+5
+19$:	cbi	Temp1,#230	; got 230 characters yet?
+	bge	20$
+	jsr	NxtByte	; no, so get next byte
+	sta	ThisChr
+	txa
+	beq	12$	; evaluate next byte
+	cpx	#11	; was it just an eof?
+	bne	90$
+20$:	jmp	FilePv2
+	nop
+
+FilePv2:
+20$:	ldb	A0L,#0	; now build eval byte
+	ldy	#6
+21$:	lda	Temp1,y
+	clc
+	beq	22$
+	sec
+22$:	rol	A0L
+	ylp	21$
+	lda	A0L
+	ldx	#0
+23$:	cmp	PvewCht2,x
+	bne	24$
+	lda	PvewCht2 + 1,x
+	sta	TransTyp
+	ldx	#0
+	rts
+24$:	inx
+	inx
+	cpx	#2 * 12
+	blt	23$
+	ldb	TransTyp,#4	; assume binary otherwise
+	ldx	#0
+	rts
+
+LSPKTest:	lda	Temp2	; loadstar filename eval
+	bne	99$
+	cbi	Temp2+1,#128
+	bne	99$
+	cbi	ThisChr,#13
+	bne	99$
+	ldy	#0
+	lda	(A9),y
+	cmp	#80	; p
+	bne	99$
+	iny
+	lda	(A9),y
+	cmp	#46	; .
+	bne	99$
+	ldb	TransTyp,#5	; petskii -- translation takes care
+	ldx	#0
+	rts
+99$:	ldx	#$ff
+	rts
+
+PvewCht:	.byte	32,65,96,127,193,219
+PvewCht2:	.byte	%00111111,4,%00100110,3,%00001110,2,%00001100,2
+	.byte	%00100100,3,%00100010,3,%00100000,3,%00000100,3
+	.byte	%00000110,3,%00001000,2,%00001010,2,%00110110,3
+
+NewPage:	lda	PageNum	; is a file even opened?
+	beq	10$
+	lda	TransTyp	; yes, but has it been evaluated?
+	bne	11$
+	jsr	FilePvew	; no, so evaluate it a little
+	txa
+	beq	11$
+10$:	rts
+11$:	ldw	R1,#PageBuf
+	ldw	R0,#TheFont - PageBuf
+	jsr	ClearRam	; clear out this pages buffer ram
+	lda	TransTyp
+	cmp	#4	; now, is it binary?
+	bne	13$
+	ldb	PageNum,#0
+	jsr	i_CNCLBox	; binary file type exit
+	.word	BadTpTxt
+12$:	jsr	ClosWin2
+	ldx	#$ff	; send back an error
+	rts
+13$:	mvw	PgCard,A0	; restore track/sector info
+	mvw	CurCard,A1
+	jsr	CopyCard	; now ready to read page
+	jsr	NxtSector
+	txa
+	bne	12$	; an errorful exit reading sector
+	ldb	dispBufferOn,#ST_WR_FORE
+	jsr	RedyWin2
+	jsr	SizeArea	; prepare cursor location
+	ldx	#6
+14$:	lda	R2 - 1,x	; $06 is R2L
+	sta	WinSave - 1,x
+	dex
+	bne	14$
+	lda	#0
+	sta	ShowPg	; clear show mode
+	jsr	SetPattern	; clear out space for new page
+	inc	R2H
+	jsr	Rectangle
+	mvb	WinSave,TextY
+	mvw	WinSave+2,TextX
+	jsr	SetupPg
+	cbi	TransTyp,#1
+	bne	99$
+	cbi	GeosTyp,#2	; 2 is PhotoAlbum
+	bne	20$
+	jmp	ShowScrap
+20$:	cmp	#4
+	bne	99$
+	jmp	ShowPaint
+99$:	; ** here is where page card stuff for fonts done
+
+
+BytLp:	mvb	ThisChr, PrevChr
+	mvb	ThisCod, PrevCod
+BytLp2:	jsr	GfxSvTSB	; save char following eow
+	jsr	NxtByte	; get a byte
+	sta	ThisChr
+	stx	ThisErr
+	cpx	#0	; yes, this line is necessary!
+	beq	20$	; evaluate errors
+	cpx	#11	; eof, so skip out
+	beq	60$
+	ldb	PageNum,#0
+	jsr	FError	; bad error, so exit
+	jsr	ClosWin2
+	ldx	#$ff	; send back an error
+	jmp	DoneWBPg
+20$:	jsr	TrnsLate	; begin logic here
+	bne	25$	; non-null code gets more eval
+	jsr	NotesEnd
+	beq	27$
+	lda	ThisChr	; force an EOW on null char
+	bne	BytLp2	; other nulls end the fun
+25$:	jsr	ChkEOP
+	bge	50$	; make a quick line check
+27$:	lda	PrevChr
+	beq	75$	; null char still ends the fun
+30$:	jsr	AddLettr
+	cwi	A3,#TheFont - 1	; if out of buff space, stop
+	blt	35$	; still space, so continue
+	ldb	ThisErr,#11	; overflow, so fake an EOF
+35$:	lda	ThisCod	; remaining null codes are ok
+	beq	55$	; code 0 detected (nothing?)
+	cmp	#3	; check for end of word code too
+	bge	55$	; eow code detected
+	cbi	PrevCod,#3
+	bge	55$	; previous was an eow
+	jmp	BytLp	; no eow, so loop back up
+40$:	jsr	BytNL	; end of line, check page
+	bge	50$	; page done, get outa here
+	jsr	SvTSB	; save the last CR TSB
+	bra	75$	; continue, page not done
+45$:	mvw	A2,A3	; make sure 0 goes right
+50$:	jsr	LdTSB	; restore last word pointer & exit
+	lda	#0
+	jsr	AddLettr
+	jmp	DoneWBPg
+55$:	cpw	A2,A3	; special case
+	bne	60$
+	jmp	BytLp	; no eow, so loop back up
+60$:	cbi	PrevCod,#4	; try an EOLN thing
+	beq	40$
+62$:	jsr	DoEOW	; begin word show here!!!
+	bge	45$	; show the word NOW
+	cbi	ThisCod,#3
+	blt	70$
+69$:	jsr	SvTSB	; save char following eow
+70$:	jsr	SayString
+	cbi	ThisErr,#11
+	beq	50$	; was end of file
+75$:	mvw	A3,A2
+	sec
+	jsr	ESCeval
+	jsr	ChkEOP
+	bge	50$	; make a quick line check
+	jmp	BytLp	; go back up and get another wd	
+
+BytNL:	cbi	ThisChr,#10	; the great linefeed controversy
+	bne	10$
+	cbi	PrevChr,#13
+	beq	ChkEOP
+10$:	cbi	ThisChr,#13	; reversed as well?
+	bne	20$
+	cbi	PrevChr,#10
+	beq	ChkEOP
+20$:	mvw	WinSave+2,TextX	; next line!
+	mvb	TextY,LastY
+	adb	curHeight,TextY
+	inc	TextY	; and one more for good measure
+ChkEOP:
+10$:	cpb	TextY,WinSave+1
+	rts
+
+SetupPg:	mvb	WinSave,TextY	; top into first line
+	mvw	WinSave+2,TextX	; left into X
+	ldw	A2,#PageBuf
+	ldw	A3,#PageBuf	; set up new page buffer
+	ldb	ThisChr,#0	; set up misc vars
+	sta	ThisCod
+	sta	TopOfPg
+	;sta	HTMflags
+	mvw	PgCard,A6	; set up for new display
+	jsr	NewCard2
+	mvw	CurCard,R0
+	ldy	#25
+	lda	(R0),y
+	;sta	HTMstate
+	jsr	BytNL
+	rts
+
+DoEOW:	lda	#0	; terminate the word
+	tay
+	sta	(A3),y
+	mvw	A2,R0		; got a word!
+	jsr	GetStrWidth
+	mvw	APITemp2,Temp2
+	adw	TextX,APITemp2	; is word gonna fit?
+	cpw	APITemp2,WinSave+4
+	blt	10$	; no, so try an EOLN
+	jsr	BytNL	; end of page reached--bad news
+10$:	rts
+
+NotesEnd:	lda	ThisChr	; force an EOW on null char
+	bne	10$
+	cbi	TransTyp,#1	; special case for NOTES
+	bne	10$
+	cbi	GeosTyp,#3
+	bne	10$
+	ldb	ThisErr,#11
+	sta	PrevCod	; just a dummy value != 4
+	ldx	#0
+10$:	rts
+
+LdTSB:	jsr	SetCurSc
+	ldy	#0
+20$:	lda	TckSave,y	; restore last word t&s&b
+	sta	(A6),y
+	iny
+	cpy	#3
+	blt	20$
+	rts
+
+SvTSB:	jsr	SetCurSc
+	ldy	#0
+90$:	lda	(A6),y
+	sta	TckSave,y	; save t&s of end of last word
+	iny
+	cpy	#3
+	blt	90$	; and save the byte
+	rts
+
+GfxSvTSB:	jsr	SetCurSc
+	ldy	#0
+90$:	lda	(A6),y
+	sta	TckSave+4,y	; save t&s of end of last word
+	iny
+	cpy	#3
+	blt	90$	; and save the byte
+	rts
+
+GfxLdTSB:	ldy	#0
+20$:	lda	TckSave+4,y	; restore last word t&s&b
+	sta	TckSave,y
+	iny
+	cpy	#3
+	blt	20$
+	rts
+
+ShowScrap:
+	jsr	NxtSector	; read in initial scrap data
+	cpx	#0
+	bne	10$
+	jsr	GfxPtH	; get some window height info
+	sbb	curHeight,Temp3	; cut total height by one char
+	mvb	Temp3,R2H
+	jsr	GfxPt2	; call the geowrite scrap view
+	ldb	ThisErr,#11	; fake an EOF for this one
+	jsr	DoneWBPg	; then exit happily
+10$:	rts
+
+GfxPtH:	ldb	Temp1+1,#0	; start checking dimensions
+	sta	Temp3+1
+	mvb	WinSave+1,Temp1
+	sta	Temp3
+	sbb	TextY,Temp1	; get Y remaining word in Temp1
+	sbb	WinSave,Temp3	; window height in Temp3
+	rts
+
+
+AddLettr:	ldy	#0	; save the word byte
+	sta	(A3),y
+	inw	A3
+	rts
+
+TrnsLate:	lda	ThisChr
+	ldx	TransTyp
+	cpx	#5	; LoadStar packed translation
+	beq	10$
+	cpx	#3
+	bne	GetCCod	; PETSKII->ASCII translation
+	tax
+	lda	Trans3,x
+	bra	16$
+10$:	tax		; try to translate
+	lda	Trans1,x
+	beq	15$
+	cmp	#$ff
+	bne	11$	; these will be one space
+	lda	#32
+	bne	16$
+11$:	pha
+	lda	PrevChr
+	jsr	AddLettr
+	cbi	PrevCod,#4
+	bne	14$
+	mvw	A3,A2	; handle last char CRs
+	jsr	BytNL
+14$:	pla
+	sta	PrevChr
+	ldb	PrevCod,#1	; assume its an ok character	
+15$:	lda	Trans2,x
+16$:	sta	ThisChr
+GetCCod:	tax
+	lda	CodeChrt,x
+	sta	ThisCod
+	bne	10$
+	ldb	ThisChr,#0
+10$:	lda	ThisChr
+	rts
+	
+
+DoneWBPg:
+DoneWPg:	jsr	UseSystemFont	; done on end of read/display
+	ldb	currentMode,#0
+	ldy	#0	; put a NULL on the end
+	tya
+	sta	(A3),y
+	rts
+
+NewCard:	mvw	CurCard,A6
+NewCard2:	ldy	#3
+	lda	(A6),y
+	sta	Temp1	; font ID, part 1
+	iny
+	lda	(A6),y
+	sta	Temp1+1	; font ID, part 2
+	iny
+	lda	(A6),y
+	sta	currentMode	; new style
+	cwi	Temp1,#0
+	beq	10$	; null font id
+	cwi	Temp1,(9*256)
+	beq	10$	; mixed up BSW id
+	cwi	Temp1,#9
+	bne	11$	; correct BSW id
+10$:	jsr	UseSystemFont
+	rts
+11$:	ldw	A1,#FontTab	; point to first font in table
+12$:	mvw	A1,A2
+	ldy	#0
+	lda	(A1),y
+	beq	10$	; no more fonts.. we're done!
+13$:	lda	(A2),y	; find this fonts data
+	pha
+	inw	A2
+	pla	
+	bne	13$
+14$:	ldy	#0
+	lda	(A2),y	; first check if real font id
+	bne	16$
+	iny
+	lda	(A2),y
+	bne	16$
+	avw	#2,A2	; end of this fonts ids, so nxt fnt
+	mvw	A2,A1
+	bra	12$
+15$:	avw	#2,A2	; check next font id
+	bra	14$	
+16$:	ldy	#0
+	lda	(A2),y
+	cmp	Temp1	; compare against desired id
+	bne	15$
+	iny
+	lda	(A2),y
+	cmp	Temp1+1	; compare against desired 2nd id
+	bne	15$
+	jmp	LdFonTA1
+
+SayString:	mvw	TextX,R11
+	mvb	TextY,R1H
+	sta	TopOfPg	; set NOT top of page flag
+	mvw	A2,R0
+	jsr	PutString
+	mvw	R11,TextX	; fake the move right
+	mvb	R1H,TextY
+10$:	rts
+
+LdFonTA1:	cpw	A1,FontTab1	; is font on app drive?
+	bge	10$
+	lda	DAABdrv
+	jsr	SetDevice	; open the app drive
+10$:	mvw	A1,R0
+	jsr	OpenRecordFile
+	cpx	#0
+	beq	12$
+11$:	jsr	UseSystemFont	; error opening record, so BSW!
+	lda	FileDrv
+	jsr	SetDevice	; set back to file drive and exit
+	rts
+12$:	lda	Temp1	; hopefully this is point size
+	and	#63	; mask lower 6 bits	
+	jsr	PointRecord	; go to the correct record
+	cpx	#0
+	bne	11$	; errorful exit
+	ldw	R2,#TheFontE-TheFont
+	ldw	R7,#TheFont
+	jsr	ReadRecord	; read in the font!!!
+	cpx	#0
+	bne	11$
+	ldw	R0,#TheFont
+	jsr	LoadCharSet	; make it the font!!
+	lda	TextY
+	sub	LastY	; now consider new Y line
+	sec
+	sbc	#1	; now have old height
+	cmp	curHeight
+	bge	13$	; got smaller, so don't worry
+	mvb	LastY,TextY
+	adb	curHeight,TextY	; calculate new bottom line
+	inc	TextY
+13$	lda	FileDrv
+	jsr	SetDevice	; set back to file drive and exit
+	rts
+
+
+ShowPage:	lda	PageNum
+	bne	90$
+	rts		; file/page not opened yet!
+90$:	cbi	TransTyp,#1
+	bne	10$
+	cbi	GeosTyp,#2	; if a photo album, re-read
+	bne	91$
+	jmp	NewPage
+91$:	cmp	#4	; Paint Images also re-read
+	bne	10$
+	jmp	NewPage
+10$:	ldb	dispBufferOn,#ST_WR_FORE
+	jsr	RedyWin2
+	jsr	SizeArea	; get our window dimensions
+	ldx	#6
+11$:	lda	R2 - 1,x	; $06 is R2L
+	cmp	WinSave - 1,x
+	beq	12$
+	jmp	NewPage
+12$:	dex		; has window changed shape?
+	bne	11$
+13$:	lda	#0
+	jsr	SetPattern	; clear out space for new page
+	inc	R2H
+	jsr	Rectangle
+	jsr	SetupPg
+	inc	ShowPg	; set show page mode
+	dew	A3	; so lookaheads are possible
+	jmp	ShowLp	; now to the fun
+	nop
+
+ShowLp:	mvb	ThisChr, PrevChr	; begin the re-show
+	mvb	ThisCod, PrevCod
+	ldy	#1
+15$:	lda	(A3),y	; get a new character
+	sta	ThisChr
+	jsr	GetCCod	; encode it
+	inw	A3
+	lda	PrevCod
+	beq	25$	; if last char undoable, loop
+	lda	ThisCod
+	beq	16$
+	cmp	#3
+	bge	16$
+	cbi	PrevCod,#3
+	blt	ShowLp
+16$:	cpw	A2,A3
+	beq	ShowLp
+	cbi	PrevCod,#4	; if going to show an end, do it
+	beq	23$
+	jsr	DoEOW	; otherwise, try to end the word
+	blt	17$
+	jmp	DoneWPg		; unexpected end of page!
+17$:	jsr	SayString	; print it out now!
+	lda	ThisChr
+	ldy	#0
+	sta	(A3),y	; restore last character
+22$:	lda	ThisChr
+	beq	24$	; another end of page
+25$:	mvw	A3,A2
+	clc
+	jsr	ESCeval	; check for escape chars
+	bne	26$
+	dew	A3
+26$:	jsr	ChkEOP
+	bge	24$	; make a quick line check
+	jmp	ShowLp	; go back up and get another wd
+23$:	jsr	BytNL	; yes, so end line--check page
+	blt	22$
+	jsr	BytNL	; end line--check page
+24$:	jmp	DoneWPg		; unexpected end of page!
+
+ESCeval:	php
+	cbi	TransTyp,#1	; is file type GEOS
+	bne	10$
+	cbi	ThisCod,#5	; was this code an escape code?
+	beq	12$
+10$:	plp
+	ldx	#$ff	; the nothing happened return
+	rts
+12$:	cbi	ThisChr,#9	; was it a tab?
+	bne	13$
+	plp
+	jsr	DoTab	; yes, so do a tab
+	jsr	TabXit
+	bra	98$
+13$:	cmp	#16	; was it a graphics escape?
+	bne	14$
+	plp
+	jsr	DoGfxEsc	; yes, so do a graphic pic
+	bra	TabXit
+14$:	cmp	#23	; was it a newcardset?
+	bne	15$
+	plp
+	jsr	DoNewCrd	; yes, so do a new cardset
+	bra	TabXit
+15$:	cmp	#17	; was it a ruler escape
+	bne	16$
+	plp
+	jsr	DoRuler	; yes, so do a new ruler
+	bra	TabXit
+16$:
+98$:	ldx	#$ff	; the nothing happened flag
+	rts
+TabXit:	ldb	ThisChr,#0	; we'll process it laters...
+	ldb	ThisCod,#0
+	mvw	A3,A2
+	ldx	#0	; the something happened flag!
+	rts
+
+DoTab:	bcc	10$	; eval a tab character
+	lda	#9
+	jsr	AddLettr
+10$:	mvw	CurCard,A0
+	ldy	#6
+11$:	sty	Temp1
+	lda	(A0),y	; look for non-null tabs
+	bne	12$
+	iny
+	lda	(A0),y
+	bne	12$
+	iny
+	cpy	#22	; have we checked ALL tabs?
+	blt	11$
+	mvw	TextX,Temp2		; no tabs, so generate one!
+	avw	#8,Temp2	; add a reasonable amount
+	bra	13$
+12$:	ldy	Temp1
+	lda	(A0),y	; look for non-null tabs
+	sta	Temp2	; found one!
+	iny
+	lda	(A0),y
+	and	#$7f	; filter the decimal alignment
+	sta	Temp2+1
+	iny
+	adw	WinSave+2,Temp2
+	cpw	Temp2,TextX	; is tab is too far left?
+	ble	11$
+13$:	cpw	Temp2,WinSave+4	; is tab too far right?
+	bge	14$
+	mvw	Temp2,TextX	; make the new tab!
+14$:	rts		; and exit	
+
+
+DoRuler:	bcc	11$	; does rest need to be read?
+	lda	ThisChr
+	jsr	AddLettr	; add the escape to the pile
+	ldb	Temp2,#0
+10$:	jsr	NxtByte
+	cpx	#0
+	bne	99$
+	jsr	AddLettr
+	inc	Temp2
+	cbi	Temp2,#26
+	blt	10$
+11$:	mvw	A2,A3	; make sure pointing to end!
+	avw	#27,A3
+	mvw	CurCard,R0
+	avw	#1,R0
+	ldy	#5
+12$:	lda	(A2),y	; copy data into current card
+	sta	(R0),y
+	iny
+	cpy	#24	; 24+1=the end
+	blt	12$
+99$:	rts	
+
+DoNewCrd:	bcc	11$	; does rest need to be read?
+	lda	ThisChr
+	jsr	AddLettr	; add the escape to the pile
+	ldb	Temp2,#0
+10$:	jsr	NxtByte
+	cpx	#0
+	bne	99$
+	jsr	AddLettr
+	inc	Temp2
+	cbi	Temp2,#3
+	blt	10$
+11$:	mvw	A2,A3	; make sure pointing to end!
+	avw	#4,A3
+	mvw	CurCard,R0
+	avw	#2,R0	; so points to right place
+	ldy	#1
+12$:	lda	(A2),y	; copy data into current card
+	sta	(R0),y
+	iny
+	cpy	#4
+	blt	12$
+	jsr	NewCard
+99$:	rts
+
+DoGfxEsc:	bcc	ChkPt	; does rest need to be read?
+	lda	ThisChr
+	jsr	AddLettr	; add the escape to the pile
+	ldb	Temp2,#0
+10$:	jsr	NxtByte
+	cpx	#0
+	beq	99$
+	rts
+99$:	jsr	AddLettr
+	inc	Temp2
+	cbi	Temp2,#4
+	blt	10$
+ChkPt:	mvw	A2,A3	; make sure pointing to end!
+	avw	#5,A3
+	lda	TopOfPg
+	beq	12$
+	jsr	BytNL
+	blt	12$
+	ldb	TextY,#$f0	; fake a bottoming out
+	jsr	GfxLdTSB
+	rts
+12$:	jsr	GfxPtH
+	ldy	#2
+	lda	(A2),y
+	sta	R2H
+	sta	Temp2	; get the image height word
+	iny
+	lda	(A2),y
+	sta	Temp2+1	; image height in Temp2
+	cpb	curHeight,Temp3	; char taller than whole window?
+	bge	14$	; can we handle first CR?
+	sbb	curHeight,Temp3	; cut total height by one char 
+	cpw	Temp2,Temp3	; can fit in total space?
+	blt	15$
+13$:	lda	TopOfPg	; should we wait for next page?
+	bne	16$	; answer is yes.
+	mvb	Temp3,R2H
+	bne	GfxPt
+14$:	rts
+15$:	cpw	Temp2,Temp1	; picture bigger than remaining?
+	blt	GfxPt
+16$:	ldb	TextY,#$f0	; fake a bottoming out
+	jsr	GfxLdTSB
+	rts
+
+	;* display a graphics clip from geoWrite
+GfxPt:	jsr	SvTSB	; make sure picture not shown 2ce
+	ldy	#4
+	lda	(A2),y	; get the record number
+	clc
+	adc	#1	; add one for the blank spot
+	asl	a	; now have index into VBuf
+	tax
+	lda	VBuf,x	; get the picture track/sector
+	bne	10$
+	jmp	BytNL		; escape on error	
+10$:	sta	R1L
+	inx
+	lda	VBuf,x
+	sta	R1H	; now have the T&S of picture
+GfxPt2:	ldw	R4,#$8000
+	ldw	R5,#0
+	ldw	A0,#Temp3+10	; save registers for ClipRead
+	jsr	SaveReg
+	ldw	R0,#ClipBuf	; got buf pointer
+	jsr	ClipRead
+	ldy	#0
+	lda	(R0),y	; got your width
+	sta	R2L			; got your height before?
+	jsr	ClipRead	; get garbage bytes
+	ldy	#0
+	lda	(R0),y	; get low height
+	cmp	R2H
+	bge	13$	; its ok, so continue
+	sta	R2H	; adjust image height down
+13$:	jsr	ClipRead
+	mvw	WinSave+2,R1
+	ldy	#3
+14$:	lsr	R1H	; divide by eight
+	ror	R1L
+	ylp	14$
+	inc	R1L	; got your start x
+	mvb	TextY,R1H	; got your start y
+	lda	#0
+	sta	R11L	; got your left buf
+	sta	R11H
+	sta	R12L	; got your scanlines to skip
+	sta	R12H
+	mvw	WinSave+4,Temp1	; find window width
+	sbw	WinSave+2,Temp1
+	ldy	#3
+15$:	lsr	Temp1+1	; divide by eight
+	ror	Temp1
+	ylp	15$	; divide by eight
+	;dec	Temp1
+	lda	R2L	; get your width
+	cmp	Temp1
+	blt	16$
+	sec
+	sbc	Temp1
+	sta	R11H	; got your right boundry!
+	mvb	Temp1,R2L
+16$:	ldw	R13,#ClipRead
+	ldw	R14,#ClipSync
+	jsr	BitOtherClip	; good stinkin luck!
+	ldy	#2
+	lda	(A2),y
+	add	TextY
+	sta	TextY
+	jmp	BytNL
+
+ClipSync:	ldw	R0,#ClipBuf	; these routines necessary
+	rts		; for bitotherclip
+ClipRead:	ldw	A0,#Temp3	; see geos prg ref guide for 
+	jsr	SaveReg	; details
+	ldw	A0,#Temp3+10
+	jsr	LoadReg
+	jsr	ReadByte	; read next byte for photo scrap
+	ldy	#0
+	sta	(R0),y
+	jsr	SaveReg
+	ldw	A0,#Temp3
+	jsr	LoadReg
+	rts
+
+LoadReg:	ldy	#0	; restore registers from A0
+	ldx	#0
+10$:	lda	(A0),y
+	sta	R1L,x
+	inx
+	iny
+	cpy	#10
+	blt	10$
+	rts
+SaveReg:	ldy	#0	; save registers to A0
+	ldx	#0
+10$:	lda	R1L,x
+	sta	(A0),y
+	inx
+	iny
+	cpy	#10
+	blt	10$
+	rts
+
+RdBxClick:	lda	PageNum
+	bne	10$
+99$:	rts
+10$:	ldw	RdClkRt+1,#UpArro
+	lda	#1
+	jsr	RdClickDo
+	beq	99$
+11$:	ldw	RdClkRt+1,#DnArro
+	lda	#2
+	jsr	RdClickDo
+	beq	99$
+13$:	jsr	IsGeoPaint
+	bne	19$
+15$:	ldw	RdClkRt+1,#LfArro
+	lda	#6
+	jsr	RdClickDo
+	beq	19$
+17$:	ldw	RdClkRt+1,#RtArro
+	lda	#7
+	jsr	RdClickDo
+	beq	19$
+	nop
+19$:	rts
+
+RdClickDo:	sta	RdClkBt1
+	sta	RdClkBt2
+	jsr	i_ChkClick	; no 
+RdClkBt1:	.byte	2
+	txa
+	beq	11$	; inside something?
+	rts
+11$:	ldb	dispBufferOn,#ST_WR_FORE
+	jsr	InvertRectangle
+RdClkRt:	jsr	DnArro
+	jsr	i_ChkClick	; no 
+RdClkBt2:	.byte	2
+	jsr	InvertRectangle
+	ldx	#0
+	rts
+
+DnArro:	ldb	Temp1,#0	; save a next VLIR flag
+	cbi	PageNum,#99	; run out of pages?
+	bgt	11$
+	lda	ThisErr
+	beq	10$	; any more pages down?
+	cmp	#11
+	bne	11$	; was it an EOF?
+	cbi	TransTyp,#1
+	bne	11$	; is the type GEOS?
+	jsr	IsNxVLIR
+	bne	11$	; are there any more pages?
+	inc	Temp1	; increment next VLIR flag
+10$:	cbi	PageNum,#1
+	bge	12$
+11$:	rts
+12$:	inc	PageNum
+	mvw	CurCard,PgCard
+	avw	#26,CurCard
+	lda	Temp1	; check next VLIR flag
+	beq	13$
+	jsr	NxVLIRPg	; find next track and sector
+	mvw	PgCard,R0
+	ldy	#0
+	lda	R1L	; save track into next currcard
+	sta	(R0),y
+	iny
+	lda	R1H	; save sec into next currcard
+	sta	(R0),y
+	iny
+	jsr	GEOFVLIs	; save new byte into nxt currcard
+	sta	(R0),y	; and now we're ready!
+13$:	jsr	NewPage
+	bra	11$
+
+
+UpArro:	cbi	PageNum,#1
+	bgt	11$	; any more pages down?
+10$:	rts
+11$:	dec	PageNum
+	cbi	TransTyp,#1
+	bne	12$	; is the type GEOS?
+	mvw	PgCard,R0
+	ldx	VBuf	; set-up old page pointers
+	ldy	#0
+	lda	(R0),y	; is the track as a new page?
+	cmp	VBuf,x
+	bne	12$
+	inx
+	iny
+	lda	(R0),y	; is the sector as a new page?
+	cmp	VBuf,x
+	bne	12$
+	iny
+	jsr	GEOFVLIs	; get proper start byte
+	cmp	(R0),y
+	bne	12$	; is the byte as a new page?
+	jsr	IsPvVLIR
+	bne	12$	; is there a previous VLIR page?
+	jsr	PvVLIRPg	; YES! So decrement VLIR pointer!
+12$:	mvw	PgCard,CurCard
+	svw	#26,PgCard
+	jsr	NewPage
+	bra	10$
+
+MakeMyVLIR:
+	mvw	PgCard,R0
+	ldx	VBuf	; set-up old page pointers
+	ldy	#0
+	lda	(R0),y	; is the track as a new page?
+	cmp	VBuf,x
+	bne	12$
+	inx
+	iny
+	lda	(R0),y	; is the sector as a new page?
+	cmp	VBuf,x
+	bne	12$
+10$:	rts		; found
+12$:	dec	VBuf	; not found
+	beq	10$
+	dec	VBuf
+	jmp	MakeMyVLIR
+
+.ramsect
+
+RDTBtxt:	.block	20
+
+PageNum:	.block	1	; page number
+ShowPg:	.block	1	; show mode 0=no, 1=yes
+PgCard:	.block	2	; pointer to current card
+CurCard:	.block	2	; current font/style info
+PgCards:	.block	(26 * 150)	; enough cards for 150 pages
+Windex:	.block	2	; unused?
+
+; the two below are MARRIED to each other :)
+PageBuf:	.block	1500	; characters for page (1400 min)
+TheFont:	.block	2000	; actual font data	
+ClipBuf:	.block	135	; bitmap clip buffer
+TheFontE:	.block	1	; end of Font Buffer
+
+TransTyp:	.block	1	; 0=?,1=geos,2=ascii,3=petskii,4=binary
+GeosTyp:	.block	1	; 0=geowrite,1=text,2=photo,3=paint
+TBuf:	.block	260	; current sector buffer
+LastSec:	.block	2	; last track/sector read
+VBuf:	.block	260	; VLIR link buffer
+ThisChr:	.block	1	; character being examined
+ThisCod:	.block	1	; parse code for ThisChr
+PrevChr:	.block	1	; previous char examined
+PrevCod:	.block	1	; parse code for PrevChr
+ThisErr:	.block	1	; disk errors from ThisChr
+WinSave:	.block	6
+TckSave:	.block	20	; saving track/sec/byte info
+TextY:	.block	1	; saved PrintString Y
+TextX:	.block	2	; saved PrintString X
+LastY:	.block	1	; above line variable
+TopOfPg:	.block	1
+DispBuf:	.block	1	; save dispBufferOn
+</pre></body></html>

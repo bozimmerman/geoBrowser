@@ -1,0 +1,900 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+;******************************
+;*  S/geoBrowser
+;*
+;*  This file contains all initialization
+;*  code and many of the common
+;*  tables and static data (since this
+;*  was finished first, it was useful
+;*  to not have to reassemble the
+;*  static data when code changed).
+;*
+;*  This file also contains all of the
+;*  code necessary to managing the
+;*  file window.  That's why its the
+;*  smaller of the two source files.
+;******************************
+
+	.if 	Pass1
+	.include	GEOSequates
+	.endif
+
+	.psect
+
+
+ProgStart:	ldb	dispBufferOn,#(ST_WR_FORE|ST_WR_BACK)
+	ldw	R0,#TheFont-PageBuf
+	ldw	R1,#PageBuf
+	jsr	ClearRam
+	ldb	ColorDirty,#0
+	ldb	PageNum,#0
+
+	jsr	UseSystemFont
+	jsr	Set128Scrn
+	jsr	ClrScrn	; clear the screen
+	jsr	DrvSetup	; initialize the files
+	ldw	R0,#MyMenu	; and prepare the menus
+	lda	#0
+	jsr	DoMenu	; set up the pull-down windows
+	jsr	InitEvnt	; initialize the windows
+	rts		; return to geos kernal
+
+
+DrvSetup:	mvb	curDrive,FileDrv
+	mvb	curDrive,DAABDrv
+	jsr	OpenDisk
+	ldw	A9,#FontTab
+	jsr	ReadFonts	; get the fonts from this drive
+	mvw	A9,FontTab1
+NewDrv:	ldb	FileSkip,#0	; initially, skip none
+	lda	FileDrv
+	jsr	SetDevice	; prepare to read disk
+	jsr	OpenDisk
+	cpx	#2
+	blt	10$	; error opening disk!
+	jmp	FError
+10$:	ldx	#A2	; get the disks name
+	jsr	GetPtrCurDkNm
+	ldw	A3,#FileDrvN	; copy disk name over
+	jsr	CopyFnam
+NxtDrv:	ldb	FilesRead,#0	; number of files read in this time
+	ldw	R0,#FileBufE-FileBuf
+	ldw	R1,#FileBuf
+	jsr	ClearRam	; clear the file names list
+	ldw	A2,#FileBuf
+	ldb	DotFlag,#0
+	jsr	IsNative
+	bne	12$
+	lda	FileSkip	; now, are we at the top?
+	bne	12$
+	inc	DotFlag
+	ldw	A8,#NVtxt0
+	ldw	A9,#FileBuf
+	ldx	#A8
+	ldy	#A9
+	jsr	CopyString
+	ldw	A2,#FileBuf+3
+12$:	ldw	A3,#FileBufE	; now get the file list for this pg
+	mvb	FileSkip,A4L
+	ldb	A4H,#27	; can't fit more than that anyhow
+	jsr	File2List
+	sta	FilesRead
+	cpb	DAABdrv,curDrive	; check for second font set
+	beq	13$
+	mvw	FontTab1,A9	; second set needed, so get it
+	jsr	OpenDisk
+	jsr	ReadFonts
+	bra	14$
+13$:	mvw	FontTab1,A1	; not needed, so clear prior sets
+	ldy	#0
+	tya
+	sta	(A1),y	
+14$:	ldb	FileClkd,#0	; init first, clicked
+	tax
+	rts
+NVtxt0:	.byte	"..",0
+
+DARefrsh:	lda	FileDrv		; refresh screen after a DA runs
+	jsr	SetDevice
+	jsr	OpenDisk
+	jsr	DrawWinA
+	rts
+
+DrawFiBx:	jsr	UnColor
+	jsr	DrDskDrv	; redraw the File window
+	jsr	RedyWin1
+	ldw	Arro2+1,#RedyWin1
+	jsr	DrawArro
+	jsr	DrwFlNms
+	rts
+
+
+
+Set128Scrn:	cwi	rightMargin,#330
+	blt	90$
+	cbi	$c00f,#$40	; check for Wheels
+	blt	10$
+	cbi	$904f,#$50	; please
+	blt	10$
+	lda	#2
+	jsr	$c2f5	; setcolormode
+	ldb	ColorDirty,#1
+	jsr	UnColor
+10$:	lda	MyMenu+5	; widen for C128 users
+	ora	#$80
+	sta	MyMenu+5
+90$:	rts
+
+DrwFlNms:	lda	#0	; populate file win w/ filenames
+	jsr	SetPattern
+	jsr	RedyWin1	; init this window
+	jsr	SizeArea
+	ldw	A2,#0
+	ldb	A3L,#5
+	jsr	WSetClick	; set filename area click
+	jsr	Rectangle
+	lda	#1
+	jsr	SetPattern
+	jsr	RedyWin1
+	jsr	SizeArea
+	ldw	A2,#FileBuf
+	lda	FileClkd
+	sta	A3L	; highlight if necessary
+	jsr	PrntList	; otherwise, display the list
+	txa
+	beq	10$	; if nothing down, get out
+	sec
+	sbc	DotFlag	; adjust for "..." fake file
+10$:	sta	FileShown	; and inform of number shown
+	rts
+
+DrawArro:	ldb	Temp1,#0	; toggle point
+	mvw	R4,R3
+	mvb	R2L,R2H
+	svw	#1,R4
+	svw	#11,R3
+	avb	#24,R2H
+	avb	#15,R2L	; now have square for arrow
+	ldw	A2,#0
+	ldb	A3L,#1
+	jsr	WSetClick
+	mvb	R2H,R11L
+	sta	R11H
+	mvw	R3,A3
+10$:	mvw	A3,R3	; prepare to draw line
+	mvb	R11L,R2H
+	lda	#0
+	sec
+	jsr	DrawLine
+	ldx	R2H
+	dex
+	stx	R11L
+	stx	R11H
+	inc	Temp1
+	bne	98$	
+	avw	#1,A3	; R3 is only lost register
+	svw	#1,R4	
+	cpw	A3,R4
+	blt	10$
+	bge	11$	; loop up to complete it
+98$:	ldb	Temp1,#$ff
+	bne	10$
+11$:	ldb	Temp1,#0
+Arro2:	jsr	RedyWin1	; now do the bottom arrow!
+	mvw	R4,R3
+	mvb	R2H,R2L
+	svw	#1,R4
+	svw	#11,R3
+	svb	#15,R2H	; now have square for arrow
+	svb	#24,R2L
+	ldw	A2,#0
+	ldb	A3L,#2
+	jsr	WSetClick
+	mvb	R2L,R11L
+	sta	R11H
+	mvw	R3,A3
+12$:	mvw	A3,R3	; prepare to draw line
+	mvb	R11L,R2H
+	lda	#0
+	sec
+	jsr	DrawLine
+	ldx	R2H
+	inx
+	stx	R11L
+	stx	R11H
+	inc	Temp1
+	bne	99$	
+	avw	#1,A3	; R3 is only lost register
+	svw	#1,R4	
+	cpw	A3,R4
+	blt	12$
+	bge	13$
+99$:	ldb	Temp1,#$ff
+	bne	12$
+13$:	rts		; done with both arrows
+
+DrawArRL:	mvb	R2H,R2L
+	mvw	R4,R3
+	svw	#28,R3
+	ldb	Temp1,#7
+	jsr	ArSetup
+	ldw	A4,#ArBitR	; the bit pattern
+	jmp	ArrowGo
+DrawArRR:	mvb	R2H,R2L
+	avw	#8,R3
+	mvw	R3,R4
+	ldb	Temp1,#6
+	jsr	ArSetup
+	ldw	A4,#ArBitL	; the bit pattern
+	jmp	ArrowGo
+ArrowGo:
+10$:	jsr	ArHlp
+	ldy	#0
+	lda	(A4),y
+	jsr	HorizontalLine
+	avw	#8,R3
+	jsr	ArHlp
+	inw	A4
+	ldy	#0
+	lda	(A4),y
+	jsr	HorizontalLine
+	inw	A4
+	svw	#8,R3
+	inc	R11L
+	cpb	R11L,R2H
+	blt	10$
+	rts
+
+
+
+ArHlp:	mvw	R3,R4
+	avw	#7,R4
+	rts
+ArSetup:	lda	R3L
+	and	#%11111000
+	sta	R3L
+	mvw	R3,R4
+	avw	#16,R4
+	svb	#1,R2H
+	svb	#11,R2L
+	ldw	A2,#0
+	mvb	Temp1,A3L
+	jsr	WSetClick
+	mvb	R2L,R11L
+	rts
+
+
+ArBitR:	.byte	%11100000, %00000000
+	.byte	%11111100, %00000000
+	.byte	%11111111, %10000000
+	.byte	%11111111, %11110000
+	.byte	%11111111, %11111111
+	.byte	%11111111, %11111111
+	.byte	%11111111, %11110000
+	.byte	%11111111, %10000000
+	.byte	%11111100, %00000000
+	.byte	%11100000, %00000000
+ArBitL:	.byte	%00000000, %00000111
+	.byte	%00000000, %00111111
+	.byte	%00000001, %11111111
+	.byte	%00001111, %11111111
+	.byte	%11111111, %11111111
+	.byte	%11111111, %11111111
+	.byte	%00001111, %11111111
+	.byte	%00000001, %11111111
+	.byte	%00000000, %00111111
+	.byte	%00000000, %00000111
+
+
+DrDskDrv:	jsr	RedyWin1
+	mvb	R2H,R1H	; prepare to write words
+	svb	#4,R1H	; pull bottom up a bit
+	mvw	R3,R11
+	avw	#3,R11	; prepare the left side
+	ldw	R0,#DrvBXtxt
+	cbi	numDrives,#2	; no Drive icon for 1 drive
+	blt	20$
+	jsr	PutString	; write the word DRIVE
+20$:	jsr	IsNative	; Disk on native, OK
+	beq	21$
+	cpb	FileDrv,DAABdrv	; can't change DA Disk!
+	beq	DrBoxes
+21$:	jsr	RedyWin1
+	mvb	R2H,R1H	; prepare to write words
+	svb	#4,R1H	; pull bottom up a bit
+	mvw	R3,R11
+	avw	#38,R11	; prepare the left side
+	ldw	R0,#DskBXtxt	
+	jsr	PutString
+DrBoxes:	jsr	RedyWin1
+	mvw	R3,R4
+	mvb	R2H,R2L	; point to bottom left
+	svb	#2,R2H	; a little off the bottom
+	svb	#12,R2L	; a lot off the top
+	avw	#2,R3	; a little more right on left
+	avw	#35,R4	; a lot more right on right
+	ldw	A2,#0
+	ldb	A3L,#3
+	cbi	numDrives,#2	; no Drive icon for 1 drive
+	blt	30$
+29$:	jsr	WSetClick
+	lda	#255
+	jsr	FrameRectangle	; draw one box
+30$:	jsr	IsNative	; Disk on native, OK
+	beq	31$
+	cpb	FileDrv,DAABdrv	; no disk box on DA drive
+	beq	11$
+31$:	avw	#35,R3
+	avw	#25,R4	; now get the other
+	ldw	A2,#0
+	ldb	A3L,#4
+	jsr	WSetClick
+	lda	#255
+	jsr	FrameRectangle
+	rts
+11$:	lda	#0
+	tax
+12$:	sta	R2L,x
+	inx
+	cpx	#6
+	bne	12$
+	ldw	A2,#0	; now really clear it
+	ldb	A3L,#4
+	jsr	WSetClick
+	rts
+DrvBXtxt:	.byte	"Drive",0
+DskBXtxt:	.byte	"Disk",0
+
+SizeArea:			; zero in on viewable area
+	avb	#15,R2L
+	svb	#16,R2H
+	svw	#16,R4
+	avw	#4,R3
+	rts
+MainEvnt:	rts
+
+FiBxClick:	ldb	A2L,#1
+	jsr	ChkClick	
+	txa
+	bne	11$	; inside top arrow!!
+	jmp	UpButt
+11$:	ldb	A2L,#2
+	jsr	ChkClick	
+	txa
+	bne	13$	; inside bottom arrow!!
+	jmp	DnButt
+13$:	ldb	A2L,#4
+	jsr	ChkClick	
+	txa
+	bne	14$	; disk click registered
+	jmp	DiskBx
+14$:	ldb	A2L,#3
+	jsr	ChkClick	
+	txa
+	bne	15$
+	jmp	DriveBx
+15$:	jsr	RedyWin1
+	jsr	SizeArea	; check for filename click
+	jsr	ClkList
+	txa
+	bne	16$	; no can do, so exit!
+99$:	rts	
+16$:	cmp	FileClkd
+	bne	18$
+	lda	dblClickCount	; yes, so check for a doubleclk
+	beq	17$
+	ldb	dispBufferOn,#(ST_WR_FORE)
+	jmp	FileInit			; double click occurred!!!!
+17$:	ldb	dblClickCount,#$40
+	rts
+18$:	sta	Temp1	; store the potential click
+	sec
+	sbc	DotFlag	; make it comparible to numshown
+	cmp	FileShown	; too far down is bad, so bye!
+	bge	99$
+	ldb	dispBufferOn,#(ST_WR_FORE)
+	lda	FileClkd
+	beq	19$
+	sta	A2L
+	jsr	PikList	; uninvert selected item
+19$:	lda	Temp1
+	sta	A2L
+	jsr	PikList	; invert new item
+	mvb	Temp1,FileClkd
+	ldb	dblClickCount,#$40
+	rts
+
+UpButt:	ldb	dispBufferOn,#(ST_WR_FORE)
+	jsr	InvertRectangle
+	lda	FileSkip	; don't go up if on top
+	beq	12$
+	ldw	A2,#FileBuf
+	ldw	A3,#FileBuf
+	ldw	A4,#FileBuf
+	jsr	CtFRows
+	cmp	FileSkip
+	bge	10$
+	sta	FileClkd	; dont panic, just using it as temp
+	sbb	FileClkd,FileSkip
+	bra	11$
+10$:	ldb	FileSkip,#0
+11$:	ldb	FileClkd,#0	; clear clicked on item
+	jsr	NxtDrv	; rewrite up filenames
+	jsr	DrwFlNms
+12$:	ldb	A2L,#1
+	jsr	ChkClick	
+	jmp	InvertRectangle
+
+DnButt:	ldb	dispBufferOn,#(ST_WR_FORE)
+	jsr	InvertRectangle
+	ldw	A2,#FileBuf
+	ldw	A3,#FileBuf
+	jsr	CtFRows
+	cmp	FileShown
+	bgt	12$	; if more rows than shown, done
+	adb	FileShown,FileSkip
+	dec	FileSkip
+	ldb	FileClkd,#0	; clear clicked on item
+	jsr	NxtDrv	; draw down filenames
+	jsr	DrwFlNms
+12$:	ldb	A2L,#2
+	jsr	ChkClick	
+	jmp	InvertRectangle
+
+
+
+CtFRows:	jsr	RedyWin1
+	jsr	SizeArea
+	ldx	#0
+10$:	inx
+	avb	#8,R2L
+	cpb	R2L,R2H
+	blt	10$
+	dex
+	txa
+	rts	
+
+
+CloseBut:	ldb	dispBufferOn,#(ST_WR_FORE)
+	jsr	InvertRectangle
+	lda	ActiveWN	; close which window?
+	beq	10$
+	lda	PageNum	; don't close 2 if not open
+	beq	10$
+	jmp	ClosWin2
+10$:	jsr	i_WinAct
+	.byte	2
+	ldb	dispBufferOn,#(ST_WR_FORE | ST_WR_BACK)
+	rts
+
+
+
+DriveBx:	ldb	dispBufferOn,#(ST_WR_FORE)
+	jsr	InvertRectangle
+	lda	PageNum	; if file open, CLOSE IT
+	beq	10$
+	jsr	ClosWin2
+10$:	ldx	#$08
+	lda	numDrives
+	add	#7
+	cmp	curDrive
+	ble	20$
+	ldx	curDrive
+	inx
+20$:	txa
+	pha
+	jsr	SetDevice
+	pla
+	cmp	curDrive
+	beq	21$
+	sta	curDrive
+	bra	10$
+21$:	jsr	OpenDisk
+	cpx	#0
+	bne	10$
+	mvb	curDrive,FileDrv
+	jsr	NewDrv
+	txa
+	bne	10$
+	jsr	RedyWin1
+	jmp	DrawWin1
+
+
+
+DiskBx:	ldb	dispBufferOn,#(ST_WR_FORE)
+	jsr	InvertRectangle
+	lda	PageNum	; if file open, CLOSE IT
+	beq	10$
+	jsr	ClosWin2
+10$:	jsr	IsNative
+	bne	12$
+	jsr	ElimDAs
+11$:	lda	#(5 | 64)
+	jsr	$9d80
+	jsr	$5003	; change partition
+	jsr	$9d83	; restore kernal
+	bra	21$
+12$:	ldw	R0,#DiskBxD
+	jsr	DoDlgBox
+21$:	jsr	NewDrv
+	txa
+	bne	10$
+	jmp	DrawWin1
+
+DiskBxD:	.byte	$80 | $01	; draw the insert disk box
+	.byte	11
+	.byte	$0e,$12
+	.word	DiskBxT
+	.byte	$01,$0f,$42
+	.byte	0
+DiskBxT:	.byte	$18,"Insert new disk into disk drive.",27,0
+
+IsNative:	cbi	$c00f,#$40
+	blt	10$
+	cbi	$904f,#$50
+	blt	10$
+	ldy	FileDrv
+	lda	driveType-8,y
+	and	#%00000111
+	cmp	#$04
+	blt	10$
+	ldx	#0
+	rts
+10$:	ldx	#1
+	rts
+ElimDAs:	rts
+
+ClikEvnt:	lda	mouseData	; handle activations
+	beq	11$
+10$:	rts
+11$:	lda	ActiveWN
+	bne	12$
+	jsr	FiBxClick
+	bra	10$
+12$:	jsr	RdBxClick
+	bra	10$
+
+
+InitEvnt:	mvb	rightMargin+1,InitEvn2+1    ; right win right mar hb
+	lda	rightMargin
+	sec
+	sbc	#4
+	sta	InitEvn2	; right win right mar lb
+	mvw	rightMargin,A0
+	ldw	A1,#3
+	ldy	#A1	; divide right margin by 3
+	ldx	#A0
+	jsr	Ddiv
+	svw	#5,A0
+	mvw	A0,InitEvn2-2	; is right win left mar
+	svw	#5,A0
+	mvw	A0,InitEvn1	; left win right margin
+	jsr	i_Win1Init
+	.word	FileDrvN
+	.word	CloseBut
+	.word	DrawFiBx
+	.byte	1	; enable this window?
+	jsr	i_Win1Mv
+	.byte	$14
+	.byte	$c5
+	.word	$0006
+InitEvn1:	.word	$0061
+	.byte	0	; do not draw now
+	ldb	RDTBtxt,#0	; initialize read window titetext
+	jsr	i_Win2Init
+	.word	RDTBtxt
+	.word	CloseBut
+	.word	DrawRdBx
+	.byte	1	; enable this window?
+	jsr	i_Win2Mv
+	.byte	$14
+	.byte	$c5
+	.word	$0068
+InitEvn2:	.word	$013a
+	.byte	0	; do not draw now
+	jsr	i_WindInit
+	.word	MainEvnt
+	.word	ClikEvnt
+	.byte	1	; File box is active
+	.byte	1	; yes, draw them now
+	rts
+
+; A9 points into font tab
+ReadFonts:	cwi	A9,#FontTab1-2
+	blt	13$
+11$:	ldx	#0
+	lda	#0
+	tay
+	sta	(A9),y
+	rts	; no room left anyway
+13$:	ldw	R0,#TransTyp-TheFont
+	ldw	R1,#TheFont	; initialize filename area
+	jsr	ClearRam
+	ldw	R6,#TheFont	; used for filename storage
+	ldb	R7L,#FONT
+	ldb	R7H,#8	; only 8 from each disk max
+	ldw	R10,#0	; no class pointer
+	jsr	FindFTypes
+	cpx	#0
+	bne	11$	; was a disk error
+	ldw	A8,#TheFont
+FntLp:	ldy	#0
+	lda	(A8),y
+	bne	15$	; found last font -- done
+11$:	ldx	#0
+	lda	#0	; exit
+	tay
+	sta	(A9),y
+	rts	; no room left anyway
+15$:	ldx	#A8	; make a copy of the src pointer
+	ldy	#A9	; make a copy of the dest pointer
+	jsr	CopyString	; copy string into place
+	avw	#17,A8	; increment source pointer
+	mvw	A9,R6	; re-copy dest filename
+17$:	ldy	#0
+	lda	(A9),y	; make sure pointing past the end
+	pha
+	inw	A9
+	pla
+	bne	17$
+	ldb	$886e,#$ff	; search only this drive
+	jsr	FindFile	; open the font for inspection
+	cpx	#0
+	bne	11$
+	ldw	R9,#$8400	; point to dir entry
+	jsr	GetFHdrInfo
+	cpx	#0
+	bne	11$	; .x will be zero for header info
+
+
+; read font table info continued
+	ldw	A1,#$8100 + $82
+	ldw	A2,#$8100 + $60
+18$:	ldy	#0
+19$:	lda	(A1),y
+	sta	(A9),y
+	sta	Temp1,y	; copy font info
+	iny
+	cpy	#2
+	bne	19$
+	avw	#2,A1
+	ldy	#2
+20$:	lda	(A2),y
+	sta	Temp1+1,y	; save size info
+	ylp	20$
+	avw	#2,A2
+	cwi	Temp1,#0
+	beq	22$	; found last font size!
+	cwi	Temp1+2,#2000
+	bge	22$	; this ones too big! done w/font
+	avw	#2,A9
+	bra	18$
+22$:	ldy	#0	; save 00 delimeter
+	tya
+	sta	(A9),y
+	iny
+	sta	(A9),y
+	avw	#2,A9
+	jmp	FntLp
+
+	
+
+
+MyMenu:	.byte	0,14			; main menu data
+	.word	0,24
+	.byte	1|HORIZONTAL
+
+	.word	MNtxt1
+	.byte	VERTICAL
+	.word	FImenu
+MNtxt1:	.byte	"file",0
+
+FImenu:	.byte	15,15+1+(3*14)	; file menu data
+	.word	0,22+20
+	.byte	VERTICAL | 3
+
+	.word	FItxt0
+	.byte	MENU_ACTION
+	.word	R_DoOpen
+
+	.word	FItxt1
+	.byte	MENU_ACTION
+	.word	R_DoClose
+
+	.word	FItxt2
+	.byte	MENU_ACTION
+	.word	R_DoExit
+
+FItxt0:	.byte	"open",0
+FItxt1:	.byte	"close",0
+FItxt2:	.byte	"exit",0
+
+R_DoExit:	ldb	PageNum,#0
+	jsr	GotoFirstMenu	; open click -- open a file
+	lda	DAABdrv	; exit click -- exit the app
+	jsr	SetDevice
+	ldw	RecoverVector,#0
+	jsr	UnColor
+	jsr	AbtBox
+	jmp	EnterDeskTop
+
+R_DoOpen:	jsr	GotoFirstMenu	; open click -- open a file
+	lda	FileClkd
+	bne	10$
+	jsr	i_CNCLBox
+	.word	POtxt0
+	rts
+10$:	jsr	UnColor
+	jmp	FileInit
+POtxt0:	.byte	$18,"Select a file first.",27,0
+
+R_DoClose:
+	jsr	GotoFirstMenu	; open click -- open a file
+	lda	PageNum
+	beq	10$
+	jsr	ClosWin2	
+10$:	rts
+
+;*********************************
+;* Trans1, Trans2 - packed text translation
+;*  tables.
+;* 
+;*********************************
+Trans1:		; ** Commodore -> GEOS
+	.byte	$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; 0-9
+	.byte	$ff,$ff,$ff,0,$ff,$ff,$ff,$ff,$ff,$ff	; 10-19
+	.byte	$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; 20-29
+	.byte	$ff,$ff,0,0,0,0,0,0,0,0	; 30-39
+	.byte	0,0,0,0,0,0,0,0,0,0	; 40-49	
+	.byte	0,0,0,0,0,0,0,0,0,0	; 50-59	
+	.byte	0,0,0,0,0,0,0,0,0,0	; 60-69	
+	.byte	0,0,0,0,0,0,0,0,0,0	; 70-79	
+	.byte	0,0,0,0,0,0,0,0,0,0	; 80-89	
+	.byte	0,0,0,0,0,0,"    "	; 90-99	
+	.byte	"          "	; 100-109
+	.byte	"     aaaaa"	; 110-119
+	.byte	"aaaabbcccc"	; 120-129
+	.byte	"cdddeeeeee"	; 130-139
+	.byte	"eeeffgghhh"	; 140-149
+	.byte	"hhiiiiiiii"	; 150-159
+	.byte	"ikkkllllll"	; 160-169
+	.byte	"lmmmmnnnnn"	; 170-179
+	.byte	"ooooooooop"	; 180-189
+	.byte	"pr",0,0,0,0,0,0,0,0	; 190-199
+	.byte	0,0,0,0,0,0,0,0,0,0	; 200-209
+	.byte	0,0,0,0,0,0,0,0,0,0	; 210-219
+	.byte	"rrrrssssss"	; 220-229
+	.byte	"ttttttttuu"	; 230-239
+	.byte	"uvwwwyy",$ff,$ff,$ff	; 240-249
+	.byte	$ff,$ff,$ff,$ff,$ff,$ff	; 250-255
+
+Trans2:		; ** Commodore -> GEOS
+	.byte	0,0,0,0,0,0,0,0,0,0	; 0-9
+	.byte	0,0,0,13,0,0,0,0,0,0	; 10-19
+	.byte	0,0,0,0,0,0,0,0,0,0	; 20-29
+	.byte	0,0," !",34,"#$%&'"	; 30-39
+	.byte	"()*+,-./01"	; 40-49	
+	.byte	"23456789:;"	; 50-59	
+	.byte	"<=>?@abcde"	; 60-69	
+	.byte	"fghijklmno"	; 70-79	
+	.byte	"pqrstuvwxy"	; 80-89	
+	.byte	"z",$18,"`",27,"^_abcd"	; 90-99	
+	.byte	"efghilmnop"	; 100-109
+	.byte	"rstwy cdil"	; 110-119
+	.byte	"nrsteoaehk"	; 120-129
+	.byte	"o ei adeln"	; 130-139
+	.byte	"rst o e ae"	; 140-149
+	.byte	"iocgklmnrs"	; 150-159
+	.byte	"t ei aeilo"	; 160-169
+	.byte	"y aeo degt"	; 170-179
+	.byte	" fnorstuwe"	; 180-189
+	.byte	"o -ABCDEFG"	; 190-199
+	.byte	"HIJKLMNOPQ"	; 200-209
+	.byte	"RSTUVWXYZ "	; 210-219
+	.byte	"eios ehist"	; 220-229
+	.byte	" aehiorslr"	; 230-239
+	.byte	"teaei o",0,0,0	; 240-249
+	.byte	0,0,0,0,0,0	; 250-255
+	.byte	0
+
+Trans3:		; ** Commodore -> GEOS -- straight ascii
+	.byte	0,0,0,0,0,0,0,0,0,0	; 0-9
+	.byte	0,0,0,13,0,0,0,13,18,0	; 10-19
+	.byte	0,0,0,0,0,0,0,0,0,32	; 20-29
+	.byte	0,0," !",34,"#$%&'"	; 30-39
+	.byte	"()*+,-./01"	; 40-49	
+	.byte	"23456789:;"	; 50-59	
+	.byte	"<=>?@abcde"	; 60-69	
+	.byte	"fghijklmno"	; 70-79	
+	.byte	"pqrstuvwxy"	; 80-89	
+	.byte	"z[~]^<-",0,0,0	; 90-99	
+	.byte	0,0,0,0,0,0,0,0,0,0	; 100-109
+	.byte	0,0,0,0,0,0,0,0,0,0	; 110-119
+	.byte	0,0,0,0,0,0,0,0,0,0	; 120-129
+	.byte	0,0,0,0,0,0,0,0,0,0	; 130-139
+	.byte	0,13,0,0,0,0,19,0,0,0	; 140-149
+	.byte	0,0,0,0,0,0,0,0,0,0	; 150-159
+	.byte	32,0,0,0,0,0,0,0,0,0	; 160-169
+	.byte	0,0,0,0,0,0,0,0,0,0	; 170-179
+	.byte	0,0,0,0,0,0,0,0,0,0	; 180-189
+	.byte	0,0,0,"ABCDEFG"	; 190-199
+	.byte	"HIJKLMNOPQ"	; 200-209
+	.byte	"RSTUVWXYZ",0	; 210-219
+	.byte	0,0,0,0,32,0,0,0,0,0	; 220-229
+	.byte	0,0,0,0,0,0,0,0,0,0	; 230-239
+	.byte	0,0,0,0,0,0,0,0,0,0	; 240-249
+	.byte	0,0,0,0,0,0	; 250-255
+	.byte	0
+
+;** lex code translation table.
+;** 0=do not use, 1=alpha, 2=word term char, 3=num, 4=end, 5=escape
+;** 6=word term code
+CodeChrt:
+	.byte	0,4,0,0,0,0,0,0,0,5	; 0-9
+	.byte	4,0,4,4,0,6,5,5,6,6	; 10-19
+	.byte	0,0,0,5,6,6,6,6,0,0	; 20-29
+	.byte	0,0,3,3,3,3,3,3,3,3	; 30-39
+	.byte	3,3,3,3,3,3,3,3,2,2	; 40-49
+	.byte	2,2,2,2,2,2,2,2,3,3	; 50-59
+	.byte	3,3,3,3,3,1,1,1,1,1	; 60-69
+	.byte	1,1,1,1,1,1,1,1,1,1	; 70-79
+	.byte	1,1,1,1,1,1,1,1,1,1	; 80-89
+	.byte	1,3,3,3,3,3,3,1,1,1	; 90-99
+	.byte	1,1,1,1,1,1,1,1,1,1	; 100-109
+	.byte	1,1,1,1,1,1,1,1,1,1	; 110-119
+	.byte	1,1,1,3,3,3,3,0,0,0	; 120-129
+	.byte	0,0,0,0,0,0,0,0,0,0	; 130-139
+	.byte	0,0,0,0,0,0,0,0,0,0	; 140-149
+	.byte	0,0,0,0,0,0,0,0,0,0	; 150-159
+	.byte	0,0,0,0,0,0,0,0,0,0	; 160-169
+	.byte	0,0,0,0,0,0,0,0,0,0	; 170-179
+	.byte	0,0,0,0,0,0,0,0,0,0	; 180-189
+	.byte	0,0,0,0,0,0,0,0,0,0	; 190-199
+	.byte	0,0,0,0,0,0,0,0,0,0	; 200-209
+	.byte	0,0,0,0,0,0,0,0,0,0	; 210-219
+	.byte	0,0,0,0,0,0,0,0,0,0	; 220-229
+	.byte	0,0,0,0,0,0,0,0,0,0	; 230-239
+	.byte	0,0,0,0,0,0,0,0,0,0	; 240-249
+	.byte	0,0,0,0,0,0	; 250-255
+
+DefCard:	.byte	0	; track
+	.byte	0	; sector
+	.byte	1	; byte
+	.byte	$00,$09	; font id
+	.byte	$01	; plain text
+	.byte	0,0	; tab 1
+	.byte	0,0	; tab 2
+	.byte	0,0	; tab 3
+	.byte	0,0	; tab 4
+	.byte	0,0	; tab 5
+	.byte	0,0	; tab 6
+	.byte	0,0	; tab 7
+	.byte	0,0	; tab 8
+	.word	0	; paragraph margin
+	.byte	%00000000	; left-single justification
+	.byte	0	; default HTMLmode
+
+
+.ramsect
+
+Temp1:	.block	20
+Temp2:	.block	20
+Temp3:	.block	20
+DAinfo:	.block	10
+
+FileDrv:	.block	1	; drive # of current disk
+FileDrvN:	.block	20	; name of current disk
+
+FileBuf:	.block	511	; list of files
+FileBufE:	.block	1	; end of file list
+DotFlag:	.block	1	; 1="..." shown, 0=not
+
+FileTop:	.block	2	; pointer to current top file
+FileSkip:	.block	1	; absolute num files down we are
+FilesRead:	.block	1	; number of files in window
+FileShown:	.block	1	; number shown on screen
+FileClkd:	.block	1	; which file # is clicked
+
+FontTab:	.block	500	; names of found fonts
+FontTab1:	.block	2	; pointor into FontTab to 2nd set
+</pre></body></html>
